@@ -34,12 +34,22 @@ local.properties
 *.keystore
 !debug.keystore
 .kotlin/
+android/build/
+android/app/build/
 
 # node.js
 #
 node_modules/
 npm-debug.log
 yarn-error.log
+*.swp
+*.lock
+
+# iOS
+ios/build/
+ios/Pods/
+*.xcworkspace
+*.xcuserstate
 
 # fastlane
 #
