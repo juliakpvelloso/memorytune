@@ -5,12 +5,12 @@ import {
   Text,
   View,
   Image,
-  Pressable,
 } from 'react-native';
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import PlaybackMedium from './components/PlaybackMedium';
 
 function App() {
   return (
@@ -42,22 +42,7 @@ function AppContent() {
         />
       </View>
 
-      <Pressable
-        style={({ pressed }) => [
-          styles.playPauseButton,
-          pressed && styles.playPauseButtonPressed,
-        ]}
-        onPress={() => setIsPlaying(!isPlaying)}>
-        <Image
-          source={
-            isPlaying
-              ? require('./assets/pause.png')
-              : require('./assets/play_arrow_filled.png')
-          }
-          style={styles.playPauseIcon}
-          resizeMode="contain"
-        />
-      </Pressable>
+      <PlaybackMedium isPlaying={isPlaying} onPress={() => setIsPlaying(!isPlaying)} />
 
       <View style={styles.textBlock}>
         <Text style={styles.artistText}>Artist Name</Text>
@@ -77,15 +62,6 @@ const styles = StyleSheet.create({
   logoContainer: {
     width: '100%',
     alignItems: 'center',
-  },
-  logoPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 1,
-    borderColor: '#D4D4D4',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   logoText: {
     fontFamily: 'Inter',
@@ -112,19 +88,6 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     opacity: 0.5,
-  },
-  playPauseButton: {
-    width: 96,
-    height: 96,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playPauseButtonPressed: {
-    opacity: 0.8,
-  },
-  playPauseIcon: {
-    width: 96,
-    height: 96,
   },
 });
 
