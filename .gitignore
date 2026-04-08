@@ -38,6 +38,7 @@ android/build/
 android/app/build/
 
 # Env (copy from .env.example)
+backend/.env
 .env
 
 # node.js
