@@ -8,11 +8,23 @@ from datetime import datetime
 import time
 
 from gemini_utils import ask_gemini, create_prompt
+from firebase_client import (
+    init_firebase,
+    is_firebase_ready,
+    get_patient,
+    get_caregiver,
+    list_patients_for_caregiver,
+    save_patient_spotify_tokens,
+    sync_now_playing,
+    verify_id_token,
+    get_valid_patient_spotify_access_token,
+)
 
 app = Flask(__name__)
 app.secret_key = '48608404894-585ghng-q2185960-344940fh2'
 
 load_dotenv()
+init_firebase()
 
 client_id = os.getenv("CLIENT_ID")
 client_secret = os.getenv("CLIENT_SECRET")
@@ -22,25 +34,76 @@ AUTH_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL =  "https://accounts.spotify.com/api/token" 
 API_BASE_URL = "https://api.spotify.com/v1/"
 
-## TODO: Integrate database to gather user info
-USER_BIRTHDAY = "1990-01-01" 
-USER_FAV_ARTISTS = ["The Beatles", "Taylor Swift", "Kendrick Lamar"]
-USER_FAV_GENRES = ["rock", "pop", "hip-hop"]
-USER_BLACKLISTED_SONGS = [""] 
-USER_BLACKLISTED_ARTISTS = ["Justin Bieber"]
-USER_ERA_PREFERENCES = ["1990s"]
-PLAYBACK_PREFERENCES = {
-    "continuous_playback": True,
-    "gentle_transition": True,
-    "allow_explicit": False
+DEFAULT_USER_CONTEXT = {
+    "USER_BIRTHDAY": "1990-01-01",
+    "USER_FAV_ARTISTS": ["The Beatles", "Taylor Swift", "Kendrick Lamar"],
+    "USER_FAV_GENRES": ["rock", "pop", "hip-hop"],
+    "USER_BLACKLISTED_SONGS": [""],
+    "USER_BLACKLISTED_ARTISTS": ["Justin Bieber"],
+    "USER_ERA_PREFERENCES": ["1990s"],
+    "PLAYBACK_PREFERENCES": {
+        "continuous_playback": True,
+        "gentle_transition": True,
+        "allow_explicit": False,
+    },
 }
 
 RECENTLY_PLAYED_TRACKS = []
 
+
+def get_active_patient_id() -> str:
+    """Firestore `patients/{id}` used for prefs, playback sync, and optional stored Spotify tokens."""
+    return (session.get("firebase_patient_id") or os.getenv("FIREBASE_PATIENT_ID") or "").strip()
+
+
+def get_user_context():
+    pid = get_active_patient_id()
+    if pid and is_firebase_ready():
+        p = get_patient(pid)
+        if p:
+            mp = p.get("musicalPreference") or {}
+            blacklisted = p.get("blacklistedSongs")
+            if blacklisted is None:
+                blacklisted = DEFAULT_USER_CONTEXT["USER_BLACKLISTED_SONGS"]
+            return {
+                "USER_BIRTHDAY": p.get("birthday")
+                or DEFAULT_USER_CONTEXT["USER_BIRTHDAY"],
+                "USER_FAV_ARTISTS": mp.get("favArtists")
+                or DEFAULT_USER_CONTEXT["USER_FAV_ARTISTS"],
+                "USER_FAV_GENRES": mp.get("favGenres")
+                or DEFAULT_USER_CONTEXT["USER_FAV_GENRES"],
+                "USER_BLACKLISTED_SONGS": blacklisted,
+                "USER_BLACKLISTED_ARTISTS": mp.get("blacklistedArtists")
+                or DEFAULT_USER_CONTEXT["USER_BLACKLISTED_ARTISTS"],
+                "USER_ERA_PREFERENCES": mp.get("eraPreferences")
+                or DEFAULT_USER_CONTEXT["USER_ERA_PREFERENCES"],
+                "PLAYBACK_PREFERENCES": dict(
+                    DEFAULT_USER_CONTEXT["PLAYBACK_PREFERENCES"]
+                ),
+            }
+    return dict(DEFAULT_USER_CONTEXT)
+
+
+def spotify_access_token():
+    """Prefer an unexpired Flask session token; otherwise use Firestore patientSecrets (Admin)."""
+    if session.get("access_token") and datetime.now().timestamp() <= session.get(
+        "expires_at", 0
+    ):
+        return session["access_token"]
+    pid = get_active_patient_id()
+    if pid and is_firebase_ready():
+        tok = get_valid_patient_spotify_access_token(pid)
+        if tok:
+            return tok
+    return None
+
 ##helper functions 
 def activate_device():
+    token = spotify_access_token()
+    if not token:
+        raise Exception("No Spotify access token. Log in or configure patient OAuth in Firestore.")
     headers = {
-        "Authorization": f"Bearer {session['access_token']}"
+        "Authorization": f"Bearer {token}"
     }
 
     # Get available devices
@@ -70,7 +133,7 @@ def activate_device():
         "https://api.spotify.com/v1/me/player",
         json=transfer_body,
         headers={
-            "Authorization": f"Bearer {session['access_token']}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
     )
@@ -78,11 +141,12 @@ def activate_device():
     return device_id
 
 def get_currently_playing():
-    if 'access_token' not in session:
+    token = spotify_access_token()
+    if not token:
         return None
 
     headers = {
-        "Authorization": f"Bearer {session['access_token']}"
+        "Authorization": f"Bearer {token}"
     }
 
     response = requests.get(
@@ -108,12 +172,13 @@ def get_currently_playing():
 
 def get_recommendations():
     print("Generating recommendations with Gemini...")
+    ctx = get_user_context()
     prompt = create_prompt(
-        fav_genres=USER_FAV_GENRES,
-        fav_artists=USER_FAV_ARTISTS,
-        blocked_songs=USER_BLACKLISTED_SONGS,
-        blocked_artists=USER_BLACKLISTED_ARTISTS,
-        eras=USER_ERA_PREFERENCES,
+        fav_genres=ctx["USER_FAV_GENRES"],
+        fav_artists=ctx["USER_FAV_ARTISTS"],
+        blocked_songs=ctx["USER_BLACKLISTED_SONGS"],
+        blocked_artists=ctx["USER_BLACKLISTED_ARTISTS"],
+        eras=ctx["USER_ERA_PREFERENCES"],
         recently_played=RECENTLY_PLAYED_TRACKS
     )
 
@@ -133,8 +198,11 @@ def get_recommendations():
 
 def song_to_uri(song_name, artist_name):
     query = f"{song_name} {artist_name}"
+    token = spotify_access_token()
+    if not token:
+        return None
     headers = {
-        "Authorization": f"Bearer {session['access_token']}"
+        "Authorization": f"Bearer {token}"
     }
 
     response = requests.get(
@@ -155,8 +223,11 @@ def add_to_queue(song_name, artist_name, device_id):
     print(f"Adding to queue: {song_name} by {artist_name} (URI: {uri})")
     
     if uri:
+        token = spotify_access_token()
+        if not token:
+            return
         headers = {
-            "Authorization": f"Bearer {session.get('access_token')}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
 
@@ -185,8 +256,11 @@ def manage_queue(device_id):
     if 'queue_initialized' not in session:
         session['queue_initialized'] = False
 
+    token = spotify_access_token()
+    if not token:
+        return
     headers = {
-        "Authorization": f"Bearer {session['access_token']}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
     # 🔥 STEP 1: Clear queue ONCE
@@ -223,10 +297,59 @@ def manage_queue(device_id):
 
 @app.route('/')
 def index():
-    return "Welcome to my Spotify App <a href='/login'>Login with Spotify</a>"
+    return (
+        "Welcome to MemoryTune. <a href='/login'>Login with Spotify</a>. "
+        "Optional: open <code>/login?patient_id=YOUR_FIRESTORE_PATIENT_DOC_ID</code> "
+        "so tokens and playback sync to that patient."
+    )
+
+
+@app.route('/auth/firebase', methods=['POST'])
+def auth_firebase():
+    data = request.get_json(silent=True) or {}
+    token = data.get('idToken') or ''
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = token or auth_header[7:]
+    if not token:
+        return jsonify({"error": "missing id token"}), 400
+    uid = verify_id_token(token)
+    if not uid:
+        return jsonify({"error": "invalid token"}), 401
+    session['firebase_uid'] = uid
+    return jsonify({"ok": True, "uid": uid})
+
+
+@app.route('/api/caregiver/patients', methods=['GET'])
+def api_caregiver_patients():
+    """Caregiver name, age, patient list (profiles only — no OAuth secrets)."""
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({"error": "missing bearer token"}), 401
+    uid = verify_id_token(auth_header[7:])
+    if not uid:
+        return jsonify({"error": "invalid token"}), 401
+    if not is_firebase_ready():
+        return jsonify({"error": "firebase not configured"}), 503
+    cg = get_caregiver(uid)
+    patients = list_patients_for_caregiver(uid)
+    return jsonify({
+        "caregiver": {
+            "id": uid,
+            "name": (cg or {}).get("name"),
+            "age": (cg or {}).get("age"),
+            "patientIds": (cg or {}).get("patientIds"),
+        },
+        "patients": patients,
+    })
+
 
 @app.route('/login')
 def login():
+    patient_id = request.args.get('patient_id')
+    if patient_id:
+        session['firebase_patient_id'] = patient_id
+
     scope = 'user-read-private user-read-email user-modify-playback-state user-read-playback-state user-read-currently-playing' ##change scopes
 
     params = {
@@ -262,11 +385,22 @@ def callback():
         session['refresh_token'] = token_info['refresh_token']
         session['expires_at'] = datetime.now().timestamp() + token_info['expires_in']
 
+        pid = get_active_patient_id()
+        if pid and is_firebase_ready():
+            save_patient_spotify_tokens(pid, token_info)
+
         return redirect('/home')
 
 @app.route('/home')
 def home():
     track_info = get_currently_playing()
+
+    pid = get_active_patient_id()
+    if pid and is_firebase_ready():
+        if track_info and "song" in track_info:
+            sync_now_playing(pid, track_info['song'], track_info['artist'])
+        else:
+            sync_now_playing(pid, None, None)
 
     if track_info and "song" in track_info:
         now_playing = f"Now playing: {track_info['song']} — {track_info['artist']}"
@@ -290,12 +424,9 @@ def home():
 @app.route('/playback')
 def playback():
     print("Activating playback...")
-    if 'access_token' not in session:
+    if not spotify_access_token():
         return redirect('/login')
 
-    if datetime.now().timestamp() > session['expires_at']:
-        return redirect('/refresh-token')
-    
     device_id = activate_device()
 
     # Manage queue (clear once + refill)
@@ -308,18 +439,16 @@ def playback():
 
 @app.route('/pause')
 def pause():
-    if 'access_token' not in session:
+    if not spotify_access_token():
         return redirect('/login')
 
-    if datetime.now().timestamp() > session['expires_at']:
-        return redirect('/refresh-token')
-    
     device_id = activate_device()
 
+    token = spotify_access_token()
     response = requests.put(
         API_BASE_URL + "me/player/pause?device_id=" +device_id,
         headers={
-            "Authorization": f"Bearer {session['access_token']}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
     )

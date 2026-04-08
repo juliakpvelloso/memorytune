@@ -62,3 +62,42 @@ cd ios && pod install && cd ..
 
 # Launch on iOS simulator
 npx react-native run-ios
+```
+
+## Firebase (Web app SDK + Firestore)
+
+MemoryTune uses the **Firebase JavaScript (Web) SDK** in React Native (same config object as a Web app in the Firebase Console). Enable **Cloud Firestore**, **Authentication → Anonymous** (patient devices), and deploy `firestore.rules`.
+
+### Data model
+
+| Collection | Document | Fields |
+|------------|----------|--------|
+| **caregivers** | `{caregiverUid}` (Firebase Auth uid) | `name` (string), `age` (number), `patientIds` (optional string[] — denormalized ids) |
+| **patients** | `{patientId}` — use the **patient device’s Firebase Auth uid** as the document id | `caregiverId` (string), `name`, `birthday` (ISO string), `musicalPreference` (`favArtists`, `favGenres`, `eraPreferences`, `blacklistedArtists`), `blacklistedSongs` (string[]), `nowPlayingSong` / `nowPlayingArtist` (written by backend) |
+| **patientSecrets** | `{patientId}` (same id as **patients**) | `accessToken`, `refreshToken`, `expiresAt` (Unix seconds) — **Admin SDK only**; clients cannot read or write (see rules). |
+
+OAuth tokens are stored under **patientSecrets** so the patient app never receives Spotify credentials. The Flask backend reads them with the Admin SDK after you complete Spotify login with `?patient_id=` set (see below).
+
+### React Native
+
+1. Copy `.env.example` to `.env` and paste your **Web app** `firebaseConfig` values.
+2. The patient app signs in **anonymously** and listens to `patients/{auth.uid}` for `name`, `nowPlayingArtist`, and `nowPlayingSong`.
+
+### Python backend
+
+```bash
+cd backend && pip install -r requirements.txt
+```
+
+Set `GOOGLE_APPLICATION_CREDENTIALS` or `FIREBASE_SERVICE_ACCOUNT_PATH` to a service account JSON file.
+
+Environment variables:
+
+- **`FIREBASE_PATIENT_ID`** — Firestore patient document id when testing without the `/login?patient_id=` flow.
+- **`CLIENT_ID` / `CLIENT_SECRET`** — used to refresh Spotify tokens stored in **patientSecrets**.
+
+Endpoints:
+
+- **`POST /auth/firebase`** — body `{"idToken": "..."}` or `Authorization: Bearer ...` to store the signed-in Firebase uid in the Flask session (for future caregiver flows).
+- **`GET /api/caregiver/patients`** — `Authorization: Bearer <Firebase ID token>` returns the caregiver’s `name`, `age`, `patientIds`, and all **patients** where `caregiverId` equals that uid (profiles only).
+- **`/login?patient_id=PATIENT_DOC_ID`** — before Spotify OAuth, binds the callback to that patient: tokens are saved to **patientSecrets** and recommendations use **patients**/`musicalPreference` + **blacklistedSongs**.

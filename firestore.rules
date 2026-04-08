@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /caregivers/{caregiverId} {
+      allow read, write: if request.auth != null && request.auth.uid == caregiverId;
+    }
+
+    // Patient-facing profile (no OAuth secrets). Backend uses Admin SDK for tokens + nowPlaying.
+    match /patients/{patientId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == patientId ||
+        resource.data.caregiverId == request.auth.uid
+      );
+      allow create: if request.auth != null &&
+        request.resource.data.caregiverId == request.auth.uid;
+      allow update, delete: if request.auth != null &&
+        resource.data.caregiverId == request.auth.uid;
+    }
+
+    // Spotify OAuth — client apps must never read this; only Admin SDK.
+    match /patientSecrets/{patientId} {
+      allow read, write: if false;
+    }
+  }
+}
