@@ -37,7 +37,7 @@ local.properties
 android/build/
 android/app/build/
 
-# Env (copy from .env.example)
+# Env
 backend/.env
 .env
 
