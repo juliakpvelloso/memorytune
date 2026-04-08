@@ -37,6 +37,10 @@ local.properties
 android/build/
 android/app/build/
 
+# Env
+backend/.env
+.env
+
 # node.js
 #
 node_modules/

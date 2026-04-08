@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   StatusBar,
   StyleSheet,
@@ -11,6 +11,9 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { getFirebaseAuth, isFirebaseConfigured } from './src/firebase';
+import { subscribePatientProfile } from './src/firebase/patientProfile';
 
 function App() {
   return (
@@ -24,6 +27,46 @@ function App() {
 function AppContent() {
   const safeAreaInsets = useSafeAreaInsets();
   const [isPlaying, setIsPlaying] = useState(false);
+  const [artistLabel, setArtistLabel] = useState('Artist Name');
+  const [songLabel, setSongLabel] = useState('Song Title');
+  const [patientName, setPatientName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured) {
+      return;
+    }
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      return;
+    }
+
+    let unsubPatient: (() => void) | undefined;
+
+    const unsubAuth = onAuthStateChanged(auth, user => {
+      unsubPatient?.();
+      unsubPatient = undefined;
+
+      if (!user) {
+        signInAnonymously(auth).catch(() => {});
+        return;
+      }
+
+      unsubPatient = subscribePatientProfile(user.uid, data => {
+        setPatientName(data?.name ?? null);
+        if (data?.nowPlayingArtist) {
+          setArtistLabel(data.nowPlayingArtist);
+        }
+        if (data?.nowPlayingSong) {
+          setSongLabel(data.nowPlayingSong);
+        }
+      });
+    });
+
+    return () => {
+      unsubAuth();
+      unsubPatient?.();
+    };
+  }, []);
 
   return (
     <View
@@ -40,6 +83,9 @@ function AppContent() {
           style={styles.logo}
           resizeMode="contain"
         />
+        {patientName ? (
+          <Text style={styles.patientNameText}>{patientName}</Text>
+        ) : null}
       </View>
 
       <Pressable
@@ -60,8 +106,8 @@ function AppContent() {
       </Pressable>
 
       <View style={styles.textBlock}>
-        <Text style={styles.artistText}>Artist Name</Text>
-        <Text style={styles.songText}>Song Title</Text>
+        <Text style={styles.artistText}>{artistLabel}</Text>
+        <Text style={styles.songText}>{songLabel}</Text>
       </View>
     </View>
   );
@@ -77,6 +123,12 @@ const styles = StyleSheet.create({
   logoContainer: {
     width: '100%',
     alignItems: 'center',
+  },
+  patientNameText: {
+    fontFamily: 'Inter',
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 8,
   },
   logoPlaceholder: {
     width: 72,
