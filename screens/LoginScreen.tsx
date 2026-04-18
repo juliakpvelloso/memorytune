@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -11,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { api } from '../services/api';
 import type { NavigateFn } from '../types';
 
 type Role = 'patient' | 'caregiver' | null;
@@ -22,19 +25,35 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
   const [password, setPassword] = useState('');
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const isPatient = role === 'patient';
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!role) return;
     if (role === 'patient') {
       navigate('patient');
-    } else {
-      navigate('caregiverDashboard');
+      return;
+    }
+    // Caregiver: authenticate via Firebase
+    setLoading(true);
+    try {
+      const ok = await api.caregiverSignIn(email, password);
+      if (ok) {
+        navigate('caregiverDashboard');
+      } else {
+        Alert.alert('Sign in failed', 'Please check your email and password.');
+      }
+    } catch {
+      Alert.alert('Sign in failed', 'Unable to connect. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const canLogin = role !== null && email.length > 0 && password.length > 0;
+  const canLogin =
+    role === 'patient' ||
+    (role === 'caregiver' && email.length > 0 && password.length > 0);
 
   return (
     <KeyboardAvoidingView
@@ -135,14 +154,18 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
           style={({ pressed }) => [
             styles.loginBtn,
             isPatient && styles.loginBtnLarge,
-            !canLogin && styles.loginBtnDisabled,
-            pressed && canLogin && styles.loginBtnPressed,
+            (!canLogin || loading) && styles.loginBtnDisabled,
+            pressed && canLogin && !loading && styles.loginBtnPressed,
           ]}
           onPress={handleLogin}
-          disabled={!canLogin}>
-          <Text style={[styles.loginBtnText, isPatient && styles.loginBtnTextLarge]}>
-            {role === 'patient' ? 'Start Listening' : role === 'caregiver' ? 'Go to Dashboard' : 'Sign In'}
-          </Text>
+          disabled={!canLogin || loading}>
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={[styles.loginBtnText, isPatient && styles.loginBtnTextLarge]}>
+              {role === 'patient' ? 'Start Listening' : role === 'caregiver' ? 'Go to Dashboard' : 'Sign In'}
+            </Text>
+          )}
         </Pressable>
 
         {!isPatient && (

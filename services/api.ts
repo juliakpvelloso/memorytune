@@ -7,11 +7,14 @@
  * BASE_URL for physical device → replace with your machine's local IP, e.g. http://192.168.1.x:5001
  * BASE_URL for Android emulator → http://10.0.2.2:5001
  */
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { getFirebaseAuth } from '../src/firebase/index';
 
 const BASE_URL = 'http://localhost:5001';
 
 // ── In-memory token store (survives navigation, resets on app kill) ───────────
 let _spotifyToken: string | null = null;
+let _firebaseIdToken: string | null = null;
 
 // ── User Profile type ─────────────────────────────────────────────────────────
 export interface UserProfile {
@@ -53,6 +56,43 @@ export const api = {
     return !!_spotifyToken;
   },
 
+  isCaregiverAuthenticated(): boolean {
+    return !!_firebaseIdToken;
+  },
+
+  /**
+   * Sign a caregiver in with email + password via Firebase Auth,
+   * then authenticate the Flask session via POST /auth/firebase.
+   */
+  async caregiverSignIn(email: string, password: string): Promise<boolean> {
+    try {
+      const auth = getFirebaseAuth();
+      if (!auth) return false;
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const idToken = await cred.user.getIdToken();
+      _firebaseIdToken = idToken;
+      // Register the session with Flask
+      const res = await fetch(`${BASE_URL}/auth/firebase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      const data = await res.json();
+      return data.ok === true;
+    } catch (e) {
+      console.warn('caregiverSignIn error:', e);
+      return false;
+    }
+  },
+
+  async caregiverSignOut(): Promise<void> {
+    try {
+      const auth = getFirebaseAuth();
+      if (auth) await signOut(auth);
+    } catch { /* ignore */ }
+    _firebaseIdToken = null;
+  },
+
   /**
    * Polls the server for a valid Spotify token.
    * Call this when the user returns from the browser after OAuth.
@@ -74,8 +114,10 @@ export const api = {
 
   _headers(): Record<string, string> {
     const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (_spotifyToken) {
-      h['Authorization'] = `Bearer ${_spotifyToken}`;
+    // Prefer Spotify token for playback calls; fall back to Firebase ID token for caregiver calls
+    const token = _spotifyToken ?? _firebaseIdToken;
+    if (token) {
+      h['Authorization'] = `Bearer ${token}`;
     }
     return h;
   },

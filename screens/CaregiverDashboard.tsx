@@ -178,7 +178,7 @@ export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn 
           resizeMode="contain"
         />
         <View style={styles.logoSide}>
-          <Pressable onPress={() => navigate('login')} hitSlop={12}>
+          <Pressable onPress={() => { api.caregiverSignOut(); navigate('login'); }} hitSlop={12}>
             <Text style={styles.logoutText}>Logout</Text>
           </Pressable>
         </View>
