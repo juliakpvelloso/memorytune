@@ -100,6 +100,10 @@ class SpotifyClient:
 
         self._is_playing = is_playing
     
+    def get_session_play_time(self) -> float:
+        """Returns total listening time in seconds."""
+        return self._accumulated_ms / 1000
+    
     def get_session_stats(self):
         return {
             "total_time_sec": self.get_session_play_time(),
