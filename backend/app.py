@@ -2,6 +2,8 @@ from flask import Flask, redirect, request, jsonify, session
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+import threading
+import time
 
 # Custom Modules
 from auth_manager import AuthManager
@@ -36,10 +38,36 @@ auth_manager = AuthManager(
     client_secret=os.getenv("CLIENT_SECRET")
 )
 
+session_clients = {}
+
+def background_session_tracker():
+    """Continuously updates session time for all active users."""
+    while True:
+        for client in session_clients.values():
+            try:
+                client.update_session_time()
+            except Exception as e:
+                print(f"Tracking error: {e}")
+        time.sleep(2)  # update every 2 seconds
+
 def get_spotify_client():
     """Helper to get an authorized client or None if unauthorized."""
     token = auth_manager.get_token(session.get("firebase_patient_id"))
-    return SpotifyClient(token) if token else None
+    if not token:
+        return None
+
+    user_id = session.get("firebase_patient_id") or "default"
+
+    # Reuse existing client if exists
+    if user_id in session_clients:
+        return session_clients[user_id]
+
+    # Otherwise create + initialize tracking
+    client = SpotifyClient(token)
+    client.start_session_tracking()
+
+    session_clients[user_id] = client
+    return client
 
 @app.route('/')
 def index():
@@ -350,4 +378,6 @@ def api_user_profile():
 
 
 if __name__ == '__main__':
+    tracker_thread = threading.Thread(target=background_session_tracker, daemon=True)
+    tracker_thread.start()
     app.run(host='0.0.0.0', port=5001, debug=True)

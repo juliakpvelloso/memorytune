@@ -66,7 +66,8 @@ class AuthManager:
             'user-read-email',
             'user-modify-playback-state',
             'user-read-playback-state',
-            'user-read-currently-playing'
+            'user-read-currently-playing',
+            'user-top-read'
         ]
     
         params = {
