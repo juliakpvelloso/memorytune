@@ -2,6 +2,8 @@ from flask import Flask, redirect, request, jsonify, session
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+import threading
+import time
 
 # Custom Modules
 from auth_manager import AuthManager
@@ -35,6 +37,16 @@ auth_manager = AuthManager(
 )
 
 session_clients = {}
+
+def background_session_tracker():
+    """Continuously updates session time for all active users."""
+    while True:
+        for client in session_clients.values():
+            try:
+                client.update_session_time()
+            except Exception as e:
+                print(f"Tracking error: {e}")
+        time.sleep(2)  # update every 2 seconds
 
 def get_spotify_client():
     """Helper to get an authorized client or None if unauthorized."""
@@ -234,9 +246,6 @@ def session_time():
     if not spotify:
         return jsonify({"error": "Not authenticated"}), 401
 
-    # Update tracking before returning
-    spotify.update_session_time()
-
     stats = spotify.get_session_stats()
 
     return jsonify({
@@ -245,4 +254,6 @@ def session_time():
     })
 
 if __name__ == '__main__':
+    tracker_thread = threading.Thread(target=background_session_tracker, daemon=True)
+    tracker_thread.start()
     app.run(host='0.0.0.0', port=5001, debug=True)
