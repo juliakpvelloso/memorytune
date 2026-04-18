@@ -106,19 +106,11 @@ export default function PatientScreen({ navigate }: { navigate: NavigateFn }) {
       ]}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerSide} />
         <Image
           source={require('../assets/logo.png')}
           style={styles.logo}
           resizeMode="contain"
         />
-        <View style={styles.headerSide}>
-          <Pressable
-            onPress={() => navigate('caregiverDashboard')}
-            style={styles.caregiverBtn}>
-            <Text style={styles.caregiverBtnText}>Caregiver</Text>
-          </Pressable>
-        </View>
       </View>
 
       {/* Center: CD player */}
@@ -163,32 +155,14 @@ const styles = StyleSheet.create({
   },
   header: {
     width: '100%',
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 20,
     marginBottom: 0,
-  },
-  headerSide: {
-    width: 90,
-    alignItems: 'flex-end',
   },
   logo: {
     width: 54,
     height: 54,
     opacity: 0.45,
-  },
-  caregiverBtn: {
-    backgroundColor: '#111827',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-  },
-  caregiverBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
   },
   playerArea: {
     flex: 1,

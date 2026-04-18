@@ -1,6 +1,19 @@
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NavigateFn } from '../types';
+
+const ERAS = ['1950s', '1960s', '1970s', '1980s', '1990s'];
 
 function ScreenHeader({ onBack }: { onBack: () => void }) {
   return (
@@ -41,64 +54,138 @@ const headerS = StyleSheet.create({
     height: 48,
     opacity: 0.45,
   },
-  spacer: {
-    width: 40,
-  },
+  spacer: { width: 40 },
 });
-
-function ActionButton({ label }: { label: string }) {
-  return (
-    <Pressable style={styles.actionBtn}>
-      <Text style={styles.actionBtnText}>{label}</Text>
-    </Pressable>
-  );
-}
 
 export default function EditPatientProfile({ navigate }: { navigate: NavigateFn }) {
   const insets = useSafeAreaInsets();
 
+  const [name, setName] = useState('Margaret Thompson');
+  const [birthYear, setBirthYear] = useState('1947');
+  const [era, setEra] = useState('1960s');
+
+  const [editingName, setEditingName] = useState(false);
+  const [editingYear, setEditingYear] = useState(false);
+  const [editingEra, setEditingEra] = useState(false);
+
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={[
-        styles.container,
-        { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32 },
-      ]}
-      showsVerticalScrollIndicator={false}>
-      <ScreenHeader onBack={() => navigate('caregiverDashboard')} />
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: '#FFFFFF' }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.container,
+          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled">
+        <ScreenHeader onBack={() => navigate('caregiverDashboard')} />
+        <Text style={styles.title}>Edit Patient Profile</Text>
 
-      <Text style={styles.title}>Edit Patient Profile</Text>
+        <View style={styles.card}>
+          {/* Photo */}
+          <View style={styles.photoCircle}>
+            <View style={styles.photoHead} />
+            <View style={styles.photoShoulders} />
+          </View>
 
-      <View style={styles.card}>
-        {/* Patient photo */}
-        <View style={styles.photoCircle}>
-          <View style={styles.photoHead} />
-          <View style={styles.photoShoulders} />
+          {/* ── Name ── */}
+          {editingName ? (
+            <TextInput
+              style={styles.nameInput}
+              value={name}
+              onChangeText={setName}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={() => setEditingName(false)}
+              blurOnSubmit
+              selectTextOnFocus
+            />
+          ) : (
+            <Text style={styles.patientName}>{name}</Text>
+          )}
+
+          {editingName ? (
+            <Pressable style={styles.saveBtn} onPress={() => setEditingName(false)}>
+              <Text style={styles.saveBtnText}>Save</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={styles.editBtn} onPress={() => setEditingName(true)}>
+              <Text style={styles.editBtnIcon}>✏</Text>
+              <Text style={styles.editBtnText}>Edit Name</Text>
+            </Pressable>
+          )}
+
+          <View style={styles.divider} />
+
+          {/* ── Birth Year ── */}
+          {editingYear ? (
+            <TextInput
+              style={styles.yearInput}
+              value={birthYear}
+              onChangeText={setBirthYear}
+              autoFocus
+              keyboardType="number-pad"
+              returnKeyType="done"
+              onSubmitEditing={() => setEditingYear(false)}
+              blurOnSubmit
+              maxLength={4}
+              selectTextOnFocus
+            />
+          ) : (
+            <Text style={styles.bigNumber}>{birthYear}</Text>
+          )}
+          <Text style={styles.fieldLabel}>Birth Year</Text>
+
+          {editingYear ? (
+            <Pressable style={styles.saveBtn} onPress={() => setEditingYear(false)}>
+              <Text style={styles.saveBtnText}>Save</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={styles.editBtn} onPress={() => setEditingYear(true)}>
+              <Text style={styles.editBtnIcon}>✏</Text>
+              <Text style={styles.editBtnText}>Edit Year</Text>
+            </Pressable>
+          )}
+
+          <View style={styles.divider} />
+
+          {/* ── Memory Era ── */}
+          <Text style={styles.sectionLabel}>Memory Era</Text>
+
+          {editingEra ? (
+            <View style={styles.eraPickerWrap}>
+              {ERAS.map(e => (
+                <Pressable
+                  key={e}
+                  style={[styles.eraPill, era === e && styles.eraPillSelected]}
+                  onPress={() => setEra(e)}>
+                  <Text style={[styles.eraPillText, era === e && styles.eraPillTextSelected]}>
+                    {e}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.eraBox}>
+              <Text style={styles.eraText}>{era}</Text>
+            </View>
+          )}
+
+          {editingEra ? (
+            <Pressable style={styles.saveBtn} onPress={() => setEditingEra(false)}>
+              <Text style={styles.saveBtnText}>Save</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={styles.editBtn} onPress={() => setEditingEra(true)}>
+              <Text style={styles.editBtnIcon}>✏</Text>
+              <Text style={styles.editBtnText}>Edit Era</Text>
+            </Pressable>
+          )}
         </View>
-
-        {/* Name */}
-        <Text style={styles.patientName}>Margaret Thompson</Text>
-        <ActionButton label="Edit Name" />
-
-        {/* Divider */}
-        <View style={styles.divider} />
-
-        {/* Birth year */}
-        <Text style={styles.bigNumber}>1947</Text>
-        <Text style={styles.fieldLabel}>Birth Year</Text>
-        <ActionButton label="Edit Year" />
-
-        {/* Divider */}
-        <View style={styles.divider} />
-
-        {/* Memory Era */}
-        <Text style={styles.sectionLabel}>Memory Era</Text>
-        <View style={styles.eraBox}>
-          <Text style={styles.eraText}>1960s</Text>
-        </View>
-        <ActionButton label="Edit Era" />
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -117,8 +204,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   card: {
-    backgroundColor: '#C8C8C8',
+    backgroundColor: '#F3F4F6',
     borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingVertical: 28,
@@ -128,7 +217,9 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: '#A0A0A0',
+    backgroundColor: '#D1D5DB',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'flex-end',
     overflow: 'hidden',
@@ -156,15 +247,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
+  nameInput: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    borderBottomWidth: 2,
+    borderBottomColor: '#111827',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    minWidth: 200,
+    textAlign: 'center',
+  },
   bigNumber: {
     fontSize: 60,
     fontWeight: '800',
     color: '#111827',
     lineHeight: 68,
   },
+  yearInput: {
+    fontSize: 60,
+    fontWeight: '800',
+    color: '#111827',
+    lineHeight: 68,
+    borderBottomWidth: 2,
+    borderBottomColor: '#111827',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 140,
+    textAlign: 'center',
+  },
   fieldLabel: {
     fontSize: 14,
-    color: '#4B5563',
+    color: '#6B7280',
     fontWeight: '500',
     marginTop: -8,
   },
@@ -177,6 +291,8 @@ const styles = StyleSheet.create({
   eraBox: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     width: '100%',
     alignItems: 'center',
     paddingVertical: 18,
@@ -186,22 +302,69 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
   },
-  actionBtn: {
+  eraPickerWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    width: '100%',
+    paddingVertical: 4,
+  },
+  eraPill: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+  },
+  eraPillSelected: {
+    backgroundColor: '#111827',
+    borderColor: '#111827',
+  },
+  eraPillText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  eraPillTextSelected: {
+    color: '#FFFFFF',
+  },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
     backgroundColor: '#111827',
     borderRadius: 999,
-    paddingHorizontal: 32,
+    paddingHorizontal: 28,
     paddingVertical: 11,
   },
-  actionBtnText: {
+  editBtnIcon: {
+    color: '#FFFFFF',
+    fontSize: 13,
+  },
+  editBtnText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0.2,
   },
+  saveBtn: {
+    backgroundColor: '#374151',
+    borderRadius: 999,
+    paddingHorizontal: 36,
+    paddingVertical: 11,
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
   divider: {
     width: '100%',
     height: 1,
-    backgroundColor: '#ADADAD',
+    backgroundColor: '#E5E7EB',
     marginVertical: 4,
   },
 });

@@ -3,23 +3,20 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NavigateFn } from '../types';
 
-// ── Icon components (view-based, no external library) ──────────────────────
+// ── Icon components ──────────────────────────────────────────────────────────
 
 function MusicNoteIcon() {
+  // Two stems + beam + two note heads (cleaner flat construction)
   return (
     <View style={iconS.root}>
-      {/* Two eighth notes */}
-      <View style={iconS.noteGroup}>
-        <View style={iconS.noteLeft}>
-          <View style={iconS.noteHead} />
-          <View style={iconS.noteStem} />
-        </View>
-        <View style={iconS.noteRight}>
-          <View style={iconS.noteHead} />
-          <View style={iconS.noteStem} />
-        </View>
-        <View style={iconS.noteBeam} />
-      </View>
+      {/* Beam across the top */}
+      <View style={iconS.beam} />
+      {/* Left stem + head */}
+      <View style={iconS.stemLeft} />
+      <View style={[iconS.head, iconS.headLeft]} />
+      {/* Right stem + head */}
+      <View style={iconS.stemRight} />
+      <View style={[iconS.head, iconS.headRight]} />
     </View>
   );
 }
@@ -27,8 +24,8 @@ function MusicNoteIcon() {
 function PersonIcon() {
   return (
     <View style={iconS.root}>
-      <View style={iconS.head} />
-      <View style={iconS.shoulders} />
+      <View style={iconS.personHead} />
+      <View style={iconS.personShoulders} />
     </View>
   );
 }
@@ -59,64 +56,68 @@ const iconS = StyleSheet.create({
   root: {
     width: 32,
     height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  // Music notes
-  noteGroup: {
-    width: 28,
-    height: 22,
-    position: 'relative',
-  },
-  noteLeft: {
+  // Music note (two eighth notes beamed)
+  beam: {
     position: 'absolute',
-    left: 0,
-    bottom: 0,
-    alignItems: 'center',
-  },
-  noteRight: {
-    position: 'absolute',
-    left: 12,
-    bottom: 4,
-    alignItems: 'center',
-  },
-  noteHead: {
-    width: 8,
-    height: 6,
-    borderRadius: 4,
-    backgroundColor: ICON_COLOR,
-    transform: [{ rotate: '-15deg' }],
-  },
-  noteStem: {
-    width: 2,
-    height: 14,
-    backgroundColor: ICON_COLOR,
-    marginTop: -1,
-    alignSelf: 'flex-end',
-  },
-  noteBeam: {
-    position: 'absolute',
-    top: 0,
+    top: 4,
     left: 10,
-    width: 16,
-    height: 2.5,
+    width: 14,
+    height: 3,
+    backgroundColor: ICON_COLOR,
+    borderRadius: 1.5,
+  },
+  stemLeft: {
+    position: 'absolute',
+    top: 4,
+    left: 10,
+    width: 2.5,
+    height: 18,
     backgroundColor: ICON_COLOR,
     borderRadius: 1,
   },
-  // Person
+  stemRight: {
+    position: 'absolute',
+    top: 4,
+    left: 21,
+    width: 2.5,
+    height: 14,
+    backgroundColor: ICON_COLOR,
+    borderRadius: 1,
+  },
   head: {
+    position: 'absolute',
+    width: 9,
+    height: 7,
+    borderRadius: 5,
+    backgroundColor: ICON_COLOR,
+    transform: [{ rotate: '-20deg' }],
+  },
+  headLeft: {
+    bottom: 5,
+    left: 6,
+  },
+  headRight: {
+    bottom: 9,
+    left: 17,
+  },
+  // Person
+  personHead: {
     width: 14,
     height: 14,
     borderRadius: 7,
     backgroundColor: ICON_COLOR,
+    alignSelf: 'center',
+    marginTop: 2,
     marginBottom: 2,
   },
-  shoulders: {
+  personShoulders: {
     width: 26,
     height: 13,
     borderTopLeftRadius: 13,
     borderTopRightRadius: 13,
     backgroundColor: ICON_COLOR,
+    alignSelf: 'center',
   },
   // Gear
   gearOuter: {
@@ -127,6 +128,8 @@ const iconS = StyleSheet.create({
     borderColor: ICON_COLOR,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 4,
+    alignSelf: 'center',
   },
   gearInner: {
     width: 8,
@@ -140,6 +143,7 @@ const iconS = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 4,
     height: 28,
+    marginTop: 2,
   },
   bar: {
     width: 7,
@@ -148,13 +152,9 @@ const iconS = StyleSheet.create({
   },
 });
 
-// ── Dashboard button ────────────────────────────────────────────────────────
+// ── Dashboard nav button ──────────────────────────────────────────────────────
 
-type NavButtonProps = {
-  icon: ReactNode;
-  label: string;
-  onPress: () => void;
-};
+type NavButtonProps = { icon: ReactNode; label: string; onPress: () => void };
 
 function NavButton({ icon, label, onPress }: NavButtonProps) {
   return (
@@ -167,7 +167,7 @@ function NavButton({ icon, label, onPress }: NavButtonProps) {
   );
 }
 
-// ── Screen ──────────────────────────────────────────────────────────────────
+// ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn }) {
   const insets = useSafeAreaInsets();
@@ -191,7 +191,7 @@ export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn 
 
       {/* Main card */}
       <View style={styles.card}>
-        {/* Patient cover / photo area */}
+        {/* Patient cover area */}
         <View style={styles.photoArea} />
 
         {/* Patient info */}
@@ -202,10 +202,13 @@ export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn 
             <Text style={styles.statText}>Last Played: Beyond the Sea</Text>
           </View>
           <View style={styles.statRow}>
-            <Text style={[styles.statIcon, styles.bulbIcon]}>💡</Text>
+            <Text style={styles.statIcon}>💡</Text>
             <Text style={styles.statText}>Listening today: 42 minutes</Text>
           </View>
         </View>
+
+        {/* Divider */}
+        <View style={styles.cardDivider} />
 
         {/* 2×2 nav grid */}
         <View style={styles.navGrid}>
@@ -232,9 +235,12 @@ export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn 
         </View>
       </View>
 
-      {/* Back to patient view */}
-      <Pressable style={styles.switchBtn} onPress={() => navigate('patient')}>
-        <Text style={styles.switchBtnText}>← Patient View</Text>
+      {/* Switch to patient view */}
+      <Pressable
+        style={({ pressed }) => [styles.switchBtn, pressed && styles.switchBtnPressed]}
+        onPress={() => navigate('patient')}>
+        <Text style={styles.switchBtnIcon}>♪</Text>
+        <Text style={styles.switchBtnText}>Switch to Patient View</Text>
       </Pressable>
     </View>
   );
@@ -263,24 +269,26 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: '#C8C8C8',
+    backgroundColor: '#F3F4F6',
     borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     overflow: 'hidden',
     marginBottom: 14,
   },
   photoArea: {
     width: '100%',
-    height: 130,
-    backgroundColor: '#ADADAD',
+    height: 120,
+    backgroundColor: '#D1D5DB',
   },
   infoSection: {
     paddingHorizontal: 20,
     paddingTop: 14,
-    paddingBottom: 10,
+    paddingBottom: 12,
     gap: 5,
   },
   patientName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: '#111827',
     marginBottom: 4,
@@ -291,22 +299,24 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   statIcon: {
-    fontSize: 15,
-    color: '#374151',
-  },
-  bulbIcon: {
     fontSize: 14,
+    color: '#374151',
   },
   statText: {
     fontSize: 14,
     color: '#374151',
     fontWeight: '500',
   },
+  cardDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 20,
+  },
   navGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 16,
     paddingBottom: 20,
     justifyContent: 'space-between',
     rowGap: 16,
@@ -317,13 +327,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   navBtnPressed: {
-    opacity: 0.75,
+    opacity: 0.7,
   },
   navBtnCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -335,11 +347,25 @@ const styles = StyleSheet.create({
   },
   switchBtn: {
     alignSelf: 'center',
-    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+  },
+  switchBtnPressed: {
+    backgroundColor: '#F3F4F6',
+  },
+  switchBtnIcon: {
+    fontSize: 14,
+    color: '#6B7280',
   },
   switchBtnText: {
     fontSize: 14,
     color: '#6B7280',
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });
