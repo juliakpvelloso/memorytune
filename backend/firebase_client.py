@@ -148,6 +148,15 @@ def get_valid_patient_spotify_access_token(patient_id: str) -> Optional[str]:
     return refresh_patient_spotify_access_token(patient_id)
 
 
+def update_patient(patient_id: str, data: Dict[str, Any]) -> None:
+    if not _db or not patient_id:
+        return
+    try:
+        _db.collection("patients").document(patient_id).set(data, merge=True)
+    except Exception as e:
+        print(f"update_patient: {e}")
+
+
 def sync_now_playing(
     patient_id: str,
     song: Optional[str],

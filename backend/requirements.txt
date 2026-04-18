@@ -1,5 +1,7 @@
 python-dotenv
 flask
+flask-cors
 requests
 google-genai
+pydantic
 firebase-admin
