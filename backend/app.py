@@ -23,6 +23,11 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback-secret-key")
 load_dotenv()
 init_firebase()
 
+##TODO: 
+## 1) Error catching for gemini with high demand
+## 2) Constant reloading queue
+## 3) Get user analytics and feed to firebase for caregiver dashboard
+
 # Initialize our logic managers
 auth_manager = AuthManager(
     client_id=os.getenv("CLIENT_ID"),
@@ -104,11 +109,13 @@ def playback():
     tracks = engine.get_recommendations_for_patient(patient_id, session.get('history', []))
 
     for t in tracks:
+        print(f"Queueing: {t.song} by {t.artist}")
         uri = spotify.search_track(f"{t.song} {t.artist}")
         if uri:
             # Passing device_id ensures it queues to the right place
+            print(f"Found URI: {uri} for {t.song} by {t.artist}")
             spotify.add_to_queue(uri)
-    spotify.skip_to_next()  # Skip to the first recommendation immediately
+    #spotify.skip_to_next()  # Skip to the first recommendation immediately
     return redirect('/home')
 
 @app.route('/pause')
