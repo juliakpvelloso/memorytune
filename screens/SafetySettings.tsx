@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -12,16 +12,26 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { api } from '../services/api';
 import type { NavigateFn } from '../types';
 
-type PreferenceRowProps = {
+type PlaybackPrefs = {
+  continuous_playback: boolean;
+  gentle_transition: boolean;
+  allow_explicit: boolean;
+};
+
+function PreferenceRow({
+  label,
+  value,
+  onToggle,
+  divider,
+}: {
   label: string;
   value: boolean;
   onToggle: (v: boolean) => void;
   divider?: boolean;
-};
-
-function PreferenceRow({ label, value, onToggle, divider }: PreferenceRowProps) {
+}) {
   return (
     <>
       <View style={styles.prefRow}>
@@ -38,12 +48,13 @@ function PreferenceRow({ label, value, onToggle, divider }: PreferenceRowProps) 
   );
 }
 
-type BlockListProps = {
+function BlockList({
+  items,
+  onRemove,
+}: {
   items: string[];
   onRemove: (item: string) => void;
-};
-
-function BlockList({ items, onRemove }: BlockListProps) {
+}) {
   return (
     <View style={styles.bulletList}>
       {items.map(item => (
@@ -59,29 +70,24 @@ function BlockList({ items, onRemove }: BlockListProps) {
   );
 }
 
-type InlineAddProps = {
+function InlineAdd({
+  label,
+  placeholder,
+  onAdd,
+}: {
   label: string;
   placeholder: string;
   onAdd: (value: string) => void;
-};
-
-function InlineAdd({ label, placeholder, onAdd }: InlineAddProps) {
-  const [open, setOpen] = useState(false);
+}) {
+  const [open,  setOpen]  = useState(false);
   const [value, setValue] = useState('');
   const inputRef = useRef<TextInput>(null);
 
   const commit = () => {
     const trimmed = value.trim();
-    if (trimmed) {
-      onAdd(trimmed);
-    }
+    if (trimmed) onAdd(trimmed);
     setValue('');
     setOpen(false);
-  };
-
-  const handleOpen = () => {
-    setOpen(true);
-    // autoFocus on TextInput handles keyboard
   };
 
   if (open) {
@@ -112,7 +118,7 @@ function InlineAdd({ label, placeholder, onAdd }: InlineAddProps) {
   }
 
   return (
-    <Pressable style={styles.addBtn} onPress={handleOpen}>
+    <Pressable style={styles.addBtn} onPress={() => setOpen(true)}>
       <Text style={styles.addBtnIcon}>✏</Text>
       <Text style={styles.addBtnText}>{label}</Text>
     </Pressable>
@@ -122,24 +128,67 @@ function InlineAdd({ label, placeholder, onAdd }: InlineAddProps) {
 export default function SafetySettings({ navigate }: { navigate: NavigateFn }) {
   const insets = useSafeAreaInsets();
 
-  const [blockedSongs, setBlockedSongs] = useState([
+  const [blockedSongs,   setBlockedSongs]   = useState<string[]>([
     'My Way by Fetty Wap',
     'Unforgettable by French Montana',
     '2024 by Playboi Carti',
   ]);
-  const [blockedArtists, setBlockedArtists] = useState([
-    'Elvis Presley',
-    'Yeat',
-    'Destroy Lonely',
+  const [blockedArtists, setBlockedArtists] = useState<string[]>([
+    'Elvis Presley', 'Yeat', 'Destroy Lonely',
   ]);
-  const [continuous, setContinuous] = useState(true);
-  const [gentle, setGentle] = useState(true);
-  const [noExplicit, setNoExplicit] = useState(true);
+  const [prefs, setPrefs] = useState<PlaybackPrefs>({
+    continuous_playback: true,
+    gentle_transition:   true,
+    allow_explicit:      false,
+  });
 
-  const removeSong = (song: string) =>
-    setBlockedSongs(prev => prev.filter(s => s !== song));
-  const removeArtist = (artist: string) =>
-    setBlockedArtists(prev => prev.filter(a => a !== artist));
+  // Load from backend on mount
+  useEffect(() => {
+    api.getUserProfile()
+      .then(p => {
+        if (p.blocked_songs?.length)   setBlockedSongs(p.blocked_songs);
+        if (p.blocked_artists?.length) setBlockedArtists(p.blocked_artists);
+        if (p.playback_preferences)    setPrefs(p.playback_preferences as PlaybackPrefs);
+      })
+      .catch(() => { /* server not running – keep defaults */ });
+  }, []);
+
+  // Persist helpers
+  const saveSongs = async (list: string[]) => {
+    try { await api.updateUserProfile({ blocked_songs: list }); } catch { /* ignore */ }
+  };
+  const saveArtists = async (list: string[]) => {
+    try { await api.updateUserProfile({ blocked_artists: list }); } catch { /* ignore */ }
+  };
+  const savePrefs = async (updated: PlaybackPrefs) => {
+    try { await api.updateUserProfile({ playback_preferences: updated }); } catch { /* ignore */ }
+  };
+
+  const removeSong = (song: string) => {
+    const updated = blockedSongs.filter(s => s !== song);
+    setBlockedSongs(updated);
+    saveSongs(updated);
+  };
+  const addSong = (song: string) => {
+    const updated = [...blockedSongs, song];
+    setBlockedSongs(updated);
+    saveSongs(updated);
+  };
+  const removeArtist = (artist: string) => {
+    const updated = blockedArtists.filter(a => a !== artist);
+    setBlockedArtists(updated);
+    saveArtists(updated);
+  };
+  const addArtist = (artist: string) => {
+    const updated = [...blockedArtists, artist];
+    setBlockedArtists(updated);
+    saveArtists(updated);
+  };
+  const togglePref = (key: keyof PlaybackPrefs) => {
+    const updated = { ...prefs, [key]: !prefs[key] };
+    setPrefs(updated);
+    savePrefs(updated);
+  };
 
   return (
     <KeyboardAvoidingView
@@ -154,7 +203,6 @@ export default function SafetySettings({ navigate }: { navigate: NavigateFn }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled">
 
-        {/* Header */}
         <View style={styles.header}>
           <Pressable
             onPress={() => navigate('caregiverDashboard')}
@@ -162,11 +210,7 @@ export default function SafetySettings({ navigate }: { navigate: NavigateFn }) {
             hitSlop={12}>
             <Text style={styles.backText}>←</Text>
           </Pressable>
-          <Image
-            source={require('../assets/logo.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+          <Image source={require('../assets/logo.png')} style={styles.logo} resizeMode="contain" />
           <View style={{ width: 40 }} />
         </View>
 
@@ -177,11 +221,7 @@ export default function SafetySettings({ navigate }: { navigate: NavigateFn }) {
         <View style={styles.listCard}>
           <BlockList items={blockedSongs} onRemove={removeSong} />
           <View style={styles.listDivider} />
-          <InlineAdd
-            label="Add More Songs"
-            placeholder="Song name by artist…"
-            onAdd={song => setBlockedSongs(prev => [...prev, song])}
-          />
+          <InlineAdd label="Add More Songs" placeholder="Song name by artist…" onAdd={addSong} />
         </View>
 
         {/* Blocked Artists */}
@@ -189,11 +229,7 @@ export default function SafetySettings({ navigate }: { navigate: NavigateFn }) {
         <View style={styles.listCard}>
           <BlockList items={blockedArtists} onRemove={removeArtist} />
           <View style={styles.listDivider} />
-          <InlineAdd
-            label="Add More Artists"
-            placeholder="Artist name…"
-            onAdd={artist => setBlockedArtists(prev => [...prev, artist])}
-          />
+          <InlineAdd label="Add More Artists" placeholder="Artist name…" onAdd={addArtist} />
         </View>
 
         {/* Playback Preferences */}
@@ -201,20 +237,20 @@ export default function SafetySettings({ navigate }: { navigate: NavigateFn }) {
         <View style={styles.prefsCard}>
           <PreferenceRow
             label="Continuous Playback"
-            value={continuous}
-            onToggle={setContinuous}
+            value={prefs.continuous_playback}
+            onToggle={() => togglePref('continuous_playback')}
             divider
           />
           <PreferenceRow
             label="Gentle Transitions"
-            value={gentle}
-            onToggle={setGentle}
+            value={prefs.gentle_transition}
+            onToggle={() => togglePref('gentle_transition')}
             divider
           />
           <PreferenceRow
             label="Avoid Explicit Lyrics"
-            value={noExplicit}
-            onToggle={setNoExplicit}
+            value={!prefs.allow_explicit}
+            onToggle={() => togglePref('allow_explicit')}
           />
         </View>
       </ScrollView>
@@ -223,178 +259,54 @@ export default function SafetySettings({ navigate }: { navigate: NavigateFn }) {
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  container: {
-    paddingHorizontal: 20,
-  },
+  scroll:    { flex: 1, backgroundColor: '#FFFFFF' },
+  container: { paddingHorizontal: 20 },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 12,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backText: {
-    fontSize: 26,
-    color: '#111827',
-    fontWeight: '300',
-  },
-  logo: {
-    width: 48,
-    height: 48,
-    opacity: 0.45,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 10,
-  },
-  sectionMarginTop: {
-    marginTop: 28,
-  },
-
-  // Blocked list card
+  backBtn:  { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backText: { fontSize: 26, color: '#111827', fontWeight: '300' },
+  logo:     { width: 48, height: 48, opacity: 0.45 },
+  title:    { fontSize: 28, fontWeight: '800', color: '#111827', marginBottom: 20 },
+  sectionTitle: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 10 },
+  sectionMarginTop: { marginTop: 28 },
   listCard: {
     backgroundColor: '#F3F4F6',
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 16,
-    gap: 0,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    paddingHorizontal: 18, paddingTop: 16, paddingBottom: 16,
   },
-  bulletList: {
-    gap: 8,
-    marginBottom: 4,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  bullet: {
-    fontSize: 16,
-    color: '#6B7280',
-    lineHeight: 22,
-  },
-  bulletText: {
-    fontSize: 15,
-    color: '#111827',
-    lineHeight: 22,
-    flex: 1,
-    fontWeight: '500',
-  },
-  removeX: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '600',
-  },
-  listDivider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 12,
-  },
-
-  // Inline add
-  inlineAddWrap: {
-    gap: 10,
-  },
+  bulletList: { gap: 8, marginBottom: 4 },
+  bulletRow:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  bullet:     { fontSize: 16, color: '#6B7280', lineHeight: 22 },
+  bulletText: { fontSize: 15, color: '#111827', lineHeight: 22, flex: 1, fontWeight: '500' },
+  removeX:    { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
+  listDivider:{ height: 1, backgroundColor: '#E5E7EB', marginVertical: 12 },
+  inlineAddWrap: { gap: 10 },
   inlineInput: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#111827',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: '#111827',
+    borderRadius: 12, borderWidth: 1.5, borderColor: '#111827',
+    paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 15, color: '#111827',
   },
-  inlineAddBtns: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  addConfirmBtn: {
-    flex: 1,
-    backgroundColor: '#111827',
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  addConfirmText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  addCancelBtn: {
-    flex: 1,
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#D1D5DB',
-  },
-  addCancelText: {
-    color: '#6B7280',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  inlineAddBtns:  { flexDirection: 'row', gap: 10 },
+  addConfirmBtn:  { flex: 1, backgroundColor: '#111827', borderRadius: 999, paddingVertical: 10, alignItems: 'center' },
+  addConfirmText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  addCancelBtn:   { flex: 1, borderRadius: 999, paddingVertical: 10, alignItems: 'center', borderWidth: 1.5, borderColor: '#D1D5DB' },
+  addCancelText:  { color: '#6B7280', fontSize: 14, fontWeight: '600' },
   addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#111827',
-    borderRadius: 999,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#111827', borderRadius: 999, paddingVertical: 12,
   },
-  addBtnIcon: {
-    color: '#FFFFFF',
-    fontSize: 14,
-  },
-  addBtnText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-
-  // Prefs card
+  addBtnIcon: { color: '#FFFFFF', fontSize: 14 },
+  addBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
   prefsCard: {
     backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 18,
-    paddingVertical: 4,
+    borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB',
+    paddingHorizontal: 18, paddingVertical: 4,
   },
-  prefRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  prefLabel: {
-    fontSize: 16,
-    color: '#111827',
-    fontWeight: '500',
-  },
-  prefDivider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-  },
+  prefRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14 },
+  prefLabel:  { fontSize: 16, color: '#111827', fontWeight: '500' },
+  prefDivider:{ height: 1, backgroundColor: '#E5E7EB' },
 });

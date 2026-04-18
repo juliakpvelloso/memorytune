@@ -1,5 +1,6 @@
-"""Practice File for Spotify API"""
+"""MemoryTune Backend – Flask + Spotify + Gemini AI"""
 from flask import Flask, redirect, request, jsonify, session
+from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 import requests
@@ -9,344 +10,412 @@ import time
 
 from gemini_utils import ask_gemini, create_prompt
 
+load_dotenv()
+
 app = Flask(__name__)
 app.secret_key = '48608404894-585ghng-q2185960-344940fh2'
 
-load_dotenv()
+# Allow requests from the React Native app (localhost on simulator, or LAN IP on device)
+CORS(app, supports_credentials=True, origins='*')
 
-client_id = os.getenv("CLIENT_ID")
+client_id     = os.getenv("CLIENT_ID")
 client_secret = os.getenv("CLIENT_SECRET")
-redirect_uri = os.getenv("REDIRECT_URI")
+redirect_uri  = os.getenv("REDIRECT_URI")
 
-AUTH_URL = "https://accounts.spotify.com/authorize" 
-TOKEN_URL =  "https://accounts.spotify.com/api/token" 
+AUTH_URL     = "https://accounts.spotify.com/authorize"
+TOKEN_URL    = "https://accounts.spotify.com/api/token"
 API_BASE_URL = "https://api.spotify.com/v1/"
 
-## TODO: Integrate database to gather user info
-USER_BIRTHDAY = "1990-01-01" 
-USER_FAV_ARTISTS = ["The Beatles", "Taylor Swift", "Kendrick Lamar"]
-USER_FAV_GENRES = ["rock", "pop", "hip-hop"]
-USER_BLACKLISTED_SONGS = [""] 
-USER_BLACKLISTED_ARTISTS = ["Justin Bieber"]
-USER_ERA_PREFERENCES = ["1990s"]
-PLAYBACK_PREFERENCES = {
-    "continuous_playback": True,
-    "gentle_transition": True,
-    "allow_explicit": False
+# ── Global token store ────────────────────────────────────────────────────────
+# After the browser OAuth flow completes the token is stored here so the
+# React Native app can retrieve it via GET /api/token.
+_global_access_token  = None
+_global_refresh_token = None
+_global_expires_at    = None
+
+# ── Mutable user profile (in-memory; swap for Firebase/DB to persist) ─────────
+user_profile = {
+    "name":          "Margaret Thompson",
+    "birth_year":    "1947",
+    "era":           "1960s",
+    "fav_artists":   ["The Beatles", "Taylor Swift", "Kendrick Lamar"],
+    "fav_genres":    ["rock", "pop", "hip-hop"],
+    "blocked_songs":   [],
+    "blocked_artists": ["Justin Bieber"],
+    "era_preferences": ["1960s"],
+    "playback_preferences": {
+        "continuous_playback": True,
+        "gentle_transition":   True,
+        "allow_explicit":      False,
+    },
+    "listening_today_minutes": 42,
+    "last_played": "Beyond the Sea",
 }
 
 RECENTLY_PLAYED_TRACKS = []
 
-##helper functions 
-def activate_device():
-    headers = {
-        "Authorization": f"Bearer {session['access_token']}"
-    }
 
-    # Get available devices
-    devices_response = requests.get(
+# ── Token helpers ─────────────────────────────────────────────────────────────
+
+def get_token():
+    """
+    Resolves the Spotify access token from three sources in priority order:
+    1. Authorization: Bearer <token> header  (React Native clients)
+    2. Flask session cookie                   (browser)
+    3. Server-side global store               (post-OAuth fallback for mobile)
+    """
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        return auth_header[7:]
+    if 'access_token' in session:
+        return session['access_token']
+    return _global_access_token
+
+
+def _auth_header(token):
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+# ── Spotify helper functions ──────────────────────────────────────────────────
+
+def activate_device(token):
+    resp = requests.get(
         "https://api.spotify.com/v1/me/player/devices",
-        headers=headers
+        headers={"Authorization": f"Bearer {token}"},
     )
+    data = resp.json()
+    if not data.get("devices"):
+        raise Exception("No active Spotify devices found. Open Spotify on a device first.")
 
-    devices_data = devices_response.json()
-
-    if not devices_data["devices"]:
-        raise Exception("No Spotify devices found. Open Spotify and play something first.")
-    
-    for d in devices_data["devices"]:
-        print(d["name"], d["id"], d["is_active"])
-
-    # Pick the first device
-    device_id = devices_data["devices"][0]["id"]
-
-    # Transfer playback to that device
-    transfer_body = {
-        "device_ids": [device_id],
-        "play": False
-    }
-
+    device_id = data["devices"][0]["id"]
     requests.put(
         "https://api.spotify.com/v1/me/player",
-        json=transfer_body,
-        headers={
-            "Authorization": f"Bearer {session['access_token']}",
-            "Content-Type": "application/json"
-        }
+        json={"device_ids": [device_id], "play": False},
+        headers=_auth_header(token),
     )
-
     return device_id
 
-def get_currently_playing():
-    if 'access_token' not in session:
-        return None
 
-    headers = {
-        "Authorization": f"Bearer {session['access_token']}"
-    }
-
-    response = requests.get(
-       API_BASE_URL+ "me/player/currently-playing",
-        headers=headers
+def get_currently_playing(token):
+    resp = requests.get(
+        API_BASE_URL + "me/player/currently-playing",
+        headers={"Authorization": f"Bearer {token}"},
     )
+    if resp.status_code == 204:
+        return {"message": "Nothing currently playing"}
+    if resp.status_code != 200:
+        return {"error": resp.text}
 
-    if response.status_code != 200:
-        return {"error": response.text}
-
-    data = response.json()
-
+    data = resp.json()
     if not data or data.get("item") is None:
         return {"message": "Nothing currently playing"}
 
-    track_name = data["item"]["name"]
-    artist_names = ", ".join(artist["name"] for artist in data["item"]["artists"])
-
     return {
-        "song": track_name,
-        "artist": artist_names
+        "song":        data["item"]["name"],
+        "artist":      ", ".join(a["name"] for a in data["item"]["artists"]),
+        "progress_ms": data.get("progress_ms", 0),
+        "duration_ms": data["item"].get("duration_ms", 0),
+        "is_playing":  data.get("is_playing", False),
     }
+
+
+def song_to_uri(song_name, artist_name, token):
+    resp = requests.get(
+        f"{API_BASE_URL}search",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"q": f"{song_name} {artist_name}", "type": "track"},
+    )
+    items = resp.json().get("tracks", {}).get("items", [])
+    return items[0]["uri"] if items else None
+
+
+def add_to_queue(song_name, artist_name, device_id, token):
+    uri = song_to_uri(song_name, artist_name, token)
+    if not uri:
+        print(f"  Could not find URI for '{song_name}' by {artist_name}")
+        return
+    endpoint = f"{API_BASE_URL}me/player/queue?uri={uri}&device_id={device_id}"
+    resp = requests.post(endpoint, headers=_auth_header(token))
+    if resp.status_code in [200, 204]:
+        print(f"  Queued: {song_name} – {artist_name}")
+    else:
+        print(f"  Queue error {resp.status_code}: {resp.text}")
+
 
 def get_recommendations():
-    print("Generating recommendations with Gemini...")
+    print("Asking Gemini for recommendations…")
     prompt = create_prompt(
-        fav_genres=USER_FAV_GENRES,
-        fav_artists=USER_FAV_ARTISTS,
-        blocked_songs=USER_BLACKLISTED_SONGS,
-        blocked_artists=USER_BLACKLISTED_ARTISTS,
-        eras=USER_ERA_PREFERENCES,
-        recently_played=RECENTLY_PLAYED_TRACKS
+        fav_genres=user_profile["fav_genres"],
+        fav_artists=user_profile["fav_artists"],
+        blocked_songs=user_profile["blocked_songs"],
+        blocked_artists=user_profile["blocked_artists"],
+        eras=user_profile["era_preferences"],
+        recently_played=RECENTLY_PLAYED_TRACKS,
     )
-
     response = ask_gemini(prompt)
-    print(f"Gemini response: {response}")
-    # FIX: If ask_gemini returned response.parsed, it's already a list!
-    if isinstance(response, list):
-        return response
-    
-    # Fallback only if it's a string (for safety)
-    try:
-        import json
-        return json.loads(response)
-    except:
-        print("Failed to parse Gemini response, returning empty list")
-        return []
+    return response if isinstance(response, list) else []
 
-def song_to_uri(song_name, artist_name):
-    query = f"{song_name} {artist_name}"
-    headers = {
-        "Authorization": f"Bearer {session['access_token']}"
-    }
 
-    response = requests.get(
-        f"{API_BASE_URL}search",
-        headers=headers,
-        params={"q": query, "type": "track"}
-    )
-
-    data = response.json()
-    if data["tracks"]["items"]:
-        return data["tracks"]["items"][0]["uri"]
-    return None
-
-def add_to_queue(song_name, artist_name, device_id):
-    # 1. Convert the names to a Spotify URI (assuming your song_to_uri function works)
-    uri = song_to_uri(song_name, artist_name)
-
-    print(f"Adding to queue: {song_name} by {artist_name} (URI: {uri})")
-    
-    if uri:
-        headers = {
-            "Authorization": f"Bearer {session.get('access_token')}",
-            "Content-Type": "application/json"
-        }
-
-        # 2. Construct the URL with query parameters
-        # Spotify requires 'uri' and 'device_id' in the URL string itself
-        endpoint = f"{API_BASE_URL}me/player/queue?uri={uri}&device_id={device_id}"
-
-        try:
-            # 3. Use POST instead of PUT
-            response = requests.post(endpoint, headers=headers)
-            
-            # Check for success (Spotify returns 204 No Content on success)
-            if response.status_code in [200, 204]:
-                print(f"Successfully queued: {song_name} by {artist_name}")
-            else:
-                print(f"Failed to queue. Status: {response.status_code}, Error: {response.text}")
-                
-        except Exception as e:
-            print(f"Network error adding to queue: {e}")
-    else:
-        print(f"Could not find URI for {song_name} by {artist_name}")
-
-def manage_queue(device_id):
-    print("Managing queue...")
-    # Initialize session flag
-    if 'queue_initialized' not in session:
-        session['queue_initialized'] = False
-
-    headers = {
-        "Authorization": f"Bearer {session['access_token']}",
-        "Content-Type": "application/json"
-    }
-    # 🔥 STEP 1: Clear queue ONCE
-    if not session['queue_initialized']:
+def manage_queue(device_id, token):
+    headers = _auth_header(token)
+    if not session.get('queue_initialized'):
         requests.put(
             API_BASE_URL + f"me/player/play?device_id={device_id}",
-            json={"uris": []},  # clears playback context
-            headers= headers 
+            json={"uris": []},
+            headers=headers,
         )
-
         session['queue_initialized'] = True
-        print("Queue cleared")
-
-    # 🔥 STEP 2: Check if we need more songs
-    # Since we can't read queue, just refill periodically
 
     recommendations = get_recommendations()
+    if not recommendations:
+        print("No recommendations returned from Gemini.")
+        return
 
-    if recommendations:
-        # Play the first song immediately to start the music
-        first = recommendations[0]
-        # You'll need a song_to_uri helper here
-        first_uri = song_to_uri(first.song, first.artist)
-    
+    first_uri = song_to_uri(recommendations[0].song, recommendations[0].artist, token)
+    if first_uri:
         requests.put(
             f"{API_BASE_URL}me/player/play?device_id={device_id}",
             json={"uris": [first_uri]},
-            headers=headers
+            headers=headers,
         )
+        user_profile["last_played"] = recommendations[0].song
 
-         # Queue the rest normally
-        for rec in recommendations[1:]:
-            add_to_queue(rec.song, rec.artist, device_id)
+    for rec in recommendations[1:]:
+        add_to_queue(rec.song, rec.artist, device_id, token)
+
+
+# ── Web OAuth endpoints ───────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
-    return "Welcome to my Spotify App <a href='/login'>Login with Spotify</a>"
+    return "MemoryTune backend running. <a href='/login'>Connect Spotify</a>"
+
 
 @app.route('/login')
 def login():
-    scope = 'user-read-private user-read-email user-modify-playback-state user-read-playback-state user-read-currently-playing' ##change scopes
-
+    scope = (
+        'user-read-private user-read-email '
+        'user-modify-playback-state user-read-playback-state '
+        'user-read-currently-playing'
+    )
     params = {
-        'client_id': client_id,
-        'response_type' : 'code',
-        'scope' : scope,
-        'redirect_uri': redirect_uri,
-        'show_dialog': True ##just for testing, remove
+        'client_id':     client_id,
+        'response_type': 'code',
+        'scope':         scope,
+        'redirect_uri':  redirect_uri,
+        'show_dialog':   True,
     }
+    return redirect(f"{AUTH_URL}?{urllib.parse.urlencode(params)}")
 
-    auth_url = f"{AUTH_URL}?{urllib.parse.urlencode(params)}"
-
-    return redirect(auth_url)
 
 @app.route('/callback')
 def callback():
+    global _global_access_token, _global_refresh_token, _global_expires_at
+
     if 'error' in request.args:
         return jsonify({"error": request.args['error']})
-    
-    if 'code' in request.args:
-        req_body = {
-            'code': request.args['code'],
-            'grant_type': 'authorization_code',
-            'redirect_uri': redirect_uri,
-            'client_id': client_id,
-            'client_secret': client_secret
-        }
 
-        response = requests.post(TOKEN_URL, data=req_body)
-        token_info = response.json()
+    code = request.args.get('code')
+    if not code:
+        return jsonify({"error": "No code in callback"}), 400
 
-        session['access_token'] = token_info['access_token']
-        session['refresh_token'] = token_info['refresh_token']
-        session['expires_at'] = datetime.now().timestamp() + token_info['expires_in']
+    resp = requests.post(TOKEN_URL, data={
+        'code':          code,
+        'grant_type':    'authorization_code',
+        'redirect_uri':  redirect_uri,
+        'client_id':     client_id,
+        'client_secret': client_secret,
+    })
+    token_info = resp.json()
 
-        return redirect('/home')
+    access_token  = token_info['access_token']
+    refresh_token = token_info['refresh_token']
+    expires_at    = datetime.now().timestamp() + token_info['expires_in']
+
+    # Browser session
+    session['access_token']  = access_token
+    session['refresh_token'] = refresh_token
+    session['expires_at']    = expires_at
+
+    # Global store – React Native polls GET /api/token to grab this
+    _global_access_token  = access_token
+    _global_refresh_token = refresh_token
+    _global_expires_at    = expires_at
+
+    return redirect('/home')
+
 
 @app.route('/home')
 def home():
-    track_info = get_currently_playing()
+    token = get_token()
+    now_playing = "Nothing currently playing"
+    if token:
+        info = get_currently_playing(token)
+        if info and "song" in info:
+            now_playing = f"{info['song']} — {info['artist']}"
 
-    if track_info and "song" in track_info:
-        now_playing = f"Now playing: {track_info['song']} — {track_info['artist']}"
-    else:
-        now_playing = "Nothing currently playing"
-
+    preview = (_global_access_token[:20] + '…') if _global_access_token else 'Not connected'
     return f"""
-    <h1>MemoryTune Player</h1>
-
-    <p>{now_playing}</p>
-
-    <a href="/playback">
-        <button>Play</button>
-    </a>
-
-    <a href="/pause">
-        <button>Pause</button>
-    </a>
+    <h1>MemoryTune</h1>
+    <p>Now playing: <strong>{now_playing}</strong></p>
+    <a href="/playback"><button>▶ Play</button></a>&nbsp;
+    <a href="/pause"><button>⏸ Pause</button></a>
+    <hr><p>Mobile token: <code>{preview}</code></p>
     """
+
 
 @app.route('/playback')
 def playback():
-    print("Activating playback...")
-    if 'access_token' not in session:
+    token = get_token()
+    if not token:
         return redirect('/login')
-
-    if datetime.now().timestamp() > session['expires_at']:
-        return redirect('/refresh-token')
-    
-    device_id = activate_device()
-
-    # Manage queue (clear once + refill)
-    manage_queue(device_id)
-
+    device_id = activate_device(token)
+    manage_queue(device_id, token)
     time.sleep(1)
     return redirect('/home')
 
-    
 
 @app.route('/pause')
-def pause():
-    if 'access_token' not in session:
+def pause_web():
+    token = get_token()
+    if not token:
         return redirect('/login')
-
-    if datetime.now().timestamp() > session['expires_at']:
-        return redirect('/refresh-token')
-    
-    device_id = activate_device()
-
-    response = requests.put(
-        API_BASE_URL + "me/player/pause?device_id=" +device_id,
-        headers={
-            "Authorization": f"Bearer {session['access_token']}",
-            "Content-Type": "application/json"
-        }
+    device_id = activate_device(token)
+    requests.put(
+        API_BASE_URL + f"me/player/pause?device_id={device_id}",
+        headers=_auth_header(token),
     )
-
     time.sleep(1)
     return redirect('/home')
 
+
 @app.route('/refresh-token')
-def refresh_token():
-    if 'refresh_token' not in session:
+def refresh_token_route():
+    global _global_access_token, _global_expires_at
+    refresh = session.get('refresh_token') or _global_refresh_token
+    if not refresh:
         return redirect('/login')
-    
-    if datetime.now().timestamp() > session['expires_at']:
-        req_body = {
-            'grant_type': 'refresh_token',
-            'refresh_token': session['refresh_token'],
-            'client_id': client_id,
-            'client_secret': client_secret
-        }
 
-        response = requests.post(TOKEN_URL, data=req_body)
-        new_token_info = response.json()
-
-        session['access_token'] = new_token_info['access_token']
-        session['expires_at'] = datetime.now().timestamp() + new_token_info['expires_in']
-
+    resp = requests.post(TOKEN_URL, data={
+        'grant_type':    'refresh_token',
+        'refresh_token': refresh,
+        'client_id':     client_id,
+        'client_secret': client_secret,
+    })
+    info = resp.json()
+    session['access_token'] = info['access_token']
+    session['expires_at']   = datetime.now().timestamp() + info['expires_in']
+    _global_access_token    = info['access_token']
+    _global_expires_at      = session['expires_at']
     return redirect('/home')
+
+
+# ── JSON API (React Native) ───────────────────────────────────────────────────
+
+@app.route('/api/token', methods=['GET'])
+def api_token():
+    """
+    React Native calls this after the user completes Spotify OAuth in the
+    system browser.  Returns the token that was captured in /callback.
+    """
+    if _global_access_token:
+        return jsonify({
+            "authenticated": True,
+            "access_token":  _global_access_token,
+            "expires_at":    _global_expires_at,
+        })
+    return jsonify({"authenticated": False, "access_token": None})
+
+
+@app.route('/api/currently-playing', methods=['GET'])
+def api_currently_playing():
+    token = get_token()
+    if not token:
+        return jsonify({"error": "Not authenticated", "authenticated": False}), 401
+    return jsonify(get_currently_playing(token) or {"message": "Nothing currently playing"})
+
+
+@app.route('/api/play', methods=['POST'])
+def api_play():
+    token = get_token()
+    if not token:
+        return jsonify({"error": "Not authenticated"}), 401
+    try:
+        device_id = activate_device(token)
+        manage_queue(device_id, token)
+        return jsonify({"status": "playing", "device_id": device_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/pause', methods=['POST'])
+def api_pause():
+    token = get_token()
+    if not token:
+        return jsonify({"error": "Not authenticated"}), 401
+    try:
+        device_id = activate_device(token)
+        requests.put(
+            API_BASE_URL + f"me/player/pause?device_id={device_id}",
+            headers=_auth_header(token),
+        )
+        return jsonify({"status": "paused"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/skip-next', methods=['POST'])
+def api_skip_next():
+    token = get_token()
+    if not token:
+        return jsonify({"error": "Not authenticated"}), 401
+    try:
+        device_id = activate_device(token)
+        requests.post(
+            API_BASE_URL + "me/player/next",
+            headers=_auth_header(token),
+            params={"device_id": device_id},
+        )
+        return jsonify({"status": "skipped_next"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/skip-prev', methods=['POST'])
+def api_skip_prev():
+    token = get_token()
+    if not token:
+        return jsonify({"error": "Not authenticated"}), 401
+    try:
+        device_id = activate_device(token)
+        requests.post(
+            API_BASE_URL + "me/player/previous",
+            headers=_auth_header(token),
+            params={"device_id": device_id},
+        )
+        return jsonify({"status": "skipped_prev"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/user-profile', methods=['GET'])
+def api_get_user_profile():
+    return jsonify(user_profile)
+
+
+@app.route('/api/user-profile', methods=['POST'])
+def api_update_user_profile():
+    data = request.get_json(silent=True) or {}
+    allowed_keys = [
+        'name', 'birth_year', 'era', 'fav_artists', 'fav_genres',
+        'blocked_songs', 'blocked_artists', 'era_preferences',
+        'playback_preferences',
+    ]
+    for key in allowed_keys:
+        if key in data:
+            user_profile[key] = data[key]
+    return jsonify({"status": "updated", "profile": user_profile})
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)
