@@ -253,6 +253,25 @@ def session_time():
         "is_playing": stats.get("is_playing"),
     })
 
+@app.route('/most-played')
+def most_played():
+    spotify = get_spotify_client()
+    if not spotify:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    # optional: choose time range via query param
+    time_range = request.args.get("range", "medium_term")
+
+    song = spotify.get_most_played_song(time_range=time_range)
+
+    if not song:
+        return jsonify({"message": "No data available"}), 200
+
+    return jsonify({
+        "time_range": time_range,
+        "most_played": song
+    })
+
 if __name__ == '__main__':
     tracker_thread = threading.Thread(target=background_session_tracker, daemon=True)
     tracker_thread.start()

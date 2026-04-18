@@ -110,3 +110,39 @@ class SpotifyClient:
             "is_playing": self._is_playing
         }
     
+    def get_top_tracks(self, limit: int = 10, time_range: str = "medium_term"):
+        """
+        time_range:
+            - short_term  (~4 weeks)
+            - medium_term (~6 months)
+            - long_term   (years)
+        """
+        params = {
+            "limit": limit,
+            "time_range": time_range
+        }
+
+        data = self._request("GET", "me/top/tracks", params=params)
+
+        if "error" in data:
+            return []
+
+        return data.get("items", [])
+
+    def get_most_played_song(self, time_range: str = "medium_term"):
+        tracks = self.get_top_tracks(limit=1, time_range=time_range)
+
+        if not tracks:
+            return None
+
+        t = tracks[0]
+
+        return {
+            "song": t.get("name"),
+            "artist": t.get("artists", [{}])[0].get("name"),
+            "album": t.get("album", {}).get("name"),
+            "popularity": t.get("popularity")
+        }
+
+    
+    
