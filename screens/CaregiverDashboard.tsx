@@ -180,11 +180,17 @@ export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn 
       ]}>
       {/* Logo header */}
       <View style={styles.logoRow}>
+        <View style={styles.logoSide} />
         <Image
           source={require('../assets/logo.png')}
           style={styles.logo}
           resizeMode="contain"
         />
+        <View style={styles.logoSide}>
+          <Pressable onPress={() => navigate('login')} hitSlop={12}>
+            <Text style={styles.logoutText}>Logout</Text>
+          </Pressable>
+        </View>
       </View>
 
       <Text style={styles.title}>Dashboard</Text>
@@ -238,7 +244,7 @@ export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn 
       {/* Switch to patient view */}
       <Pressable
         style={({ pressed }) => [styles.switchBtn, pressed && styles.switchBtnPressed]}
-        onPress={() => navigate('patient')}>
+        onPress={() => navigate('patientFromCaregiver')}>
         <Text style={styles.switchBtnIcon}>♪</Text>
         <Text style={styles.switchBtnText}>Switch to Patient View</Text>
       </Pressable>
@@ -253,13 +259,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   logoRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 4,
+  },
+  logoSide: {
+    width: 70,
+    alignItems: 'flex-end',
   },
   logo: {
     width: 48,
     height: 48,
     opacity: 0.45,
+  },
+  logoutText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '600',
   },
   title: {
     fontSize: 34,

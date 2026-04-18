@@ -10,7 +10,7 @@ const SONGS = [
   { title: 'Everybody Wants To Rule The World', artist: 'Tears For Fears' },
 ];
 
-// View-based transport icons to match Figma line-icon style
+// ── Transport icons ──────────────────────────────────────────────────────────
 
 function SkipPrevIcon() {
   return (
@@ -44,10 +44,7 @@ function SkipNextIcon() {
 }
 
 const iconStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  row: { flexDirection: 'row', alignItems: 'center' },
   bar: {
     width: 3,
     height: 22,
@@ -83,7 +80,14 @@ const iconStyles = StyleSheet.create({
   },
 });
 
-export default function PatientScreen({ navigate }: { navigate: NavigateFn }) {
+// ── Screen ───────────────────────────────────────────────────────────────────
+
+type Props = {
+  navigate: NavigateFn;
+  fromCaregiver: boolean;
+};
+
+export default function PatientScreen({ navigate, fromCaregiver }: Props) {
   const insets = useSafeAreaInsets();
   const [isPlaying, setIsPlaying] = useState(false);
   const [songIndex, setSongIndex] = useState(0);
@@ -104,16 +108,43 @@ export default function PatientScreen({ navigate }: { navigate: NavigateFn }) {
         styles.container,
         { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 28 },
       ]}>
+
       {/* Header */}
       <View style={styles.header}>
+        {/* Left slot */}
+        {fromCaregiver ? (
+          <Pressable
+            onPress={() => navigate('caregiverDashboard')}
+            style={styles.headerSideBtn}
+            hitSlop={12}>
+            <Text style={styles.backText}>←</Text>
+            <Text style={styles.backLabel}>Dashboard</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.headerSide} />
+        )}
+
+        {/* Logo */}
         <Image
           source={require('../assets/logo.png')}
           style={styles.logo}
           resizeMode="contain"
         />
+
+        {/* Right slot */}
+        {fromCaregiver ? (
+          <View style={styles.headerSide} />
+        ) : (
+          <Pressable
+            onPress={() => navigate('login')}
+            style={styles.headerSideBtn}
+            hitSlop={12}>
+            <Text style={styles.logoutText}>Logout</Text>
+          </Pressable>
+        )}
       </View>
 
-      {/* Center: CD player */}
+      {/* CD player */}
       <View style={styles.playerArea}>
         <PlaybackMedium
           isPlaying={isPlaying}
@@ -155,9 +186,37 @@ const styles = StyleSheet.create({
   },
   header: {
     width: '100%',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     marginBottom: 0,
+  },
+  headerSide: {
+    width: 90,
+  },
+  headerSideBtn: {
+    width: 90,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backText: {
+    fontSize: 20,
+    color: '#6B7280',
+    fontWeight: '300',
+  },
+  backLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  logoutText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '600',
+    textAlign: 'right',
+    width: '100%',
   },
   logo: {
     width: 54,

@@ -19,7 +19,9 @@ function App() {
       case 'login':
         return <LoginScreen navigate={navigate} />;
       case 'patient':
-        return <PatientScreen navigate={navigate} />;
+        return <PatientScreen navigate={navigate} fromCaregiver={false} />;
+      case 'patientFromCaregiver':
+        return <PatientScreen navigate={navigate} fromCaregiver={true} />;
       case 'caregiverDashboard':
         return <CaregiverDashboard navigate={navigate} />;
       case 'editPatientProfile':

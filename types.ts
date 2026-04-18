@@ -1,6 +1,7 @@
 export type Screen =
   | 'login'
   | 'patient'
+  | 'patientFromCaregiver'
   | 'caregiverDashboard'
   | 'editPatientProfile'
   | 'manageMusic'
