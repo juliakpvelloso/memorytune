@@ -34,10 +34,26 @@ auth_manager = AuthManager(
     client_secret=os.getenv("CLIENT_SECRET")
 )
 
+session_clients = {}
+
 def get_spotify_client():
     """Helper to get an authorized client or None if unauthorized."""
     token = auth_manager.get_token(session.get("firebase_patient_id"))
-    return SpotifyClient(token) if token else None
+    if not token:
+        return None
+
+    user_id = session.get("firebase_patient_id") or "default"
+
+    # Reuse existing client if exists
+    if user_id in session_clients:
+        return session_clients[user_id]
+
+    # Otherwise create + initialize tracking
+    client = SpotifyClient(token)
+    client.start_session_tracking()
+
+    session_clients[user_id] = client
+    return client
 
 @app.route('/')
 def index():
@@ -210,6 +226,22 @@ def api_caregiver_patients():
             "patientIds": (cg or {}).get("patientIds"),
         },
         "patients": patients,
+    })
+
+@app.route('/session-time')
+def session_time():
+    spotify = get_spotify_client()
+    if not spotify:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    # Update tracking before returning
+    spotify.update_session_time()
+
+    stats = spotify.get_session_stats()
+
+    return jsonify({
+        "total_time_seconds": round(stats.get("total_time_sec", 0), 2),
+        "is_playing": stats.get("is_playing"),
     })
 
 if __name__ == '__main__':
