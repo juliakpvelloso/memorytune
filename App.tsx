@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Screen } from './types';
+import LoginScreen from './screens/LoginScreen';
 import PatientScreen from './screens/PatientScreen';
 import CaregiverDashboard from './screens/CaregiverDashboard';
 import EditPatientProfile from './screens/EditPatientProfile';
@@ -10,11 +11,13 @@ import SafetySettings from './screens/SafetySettings';
 import ListeningInsights from './screens/ListeningInsights';
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('patient');
+  const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const navigate = (screen: Screen) => setCurrentScreen(screen);
 
   const renderScreen = () => {
     switch (currentScreen) {
+      case 'login':
+        return <LoginScreen navigate={navigate} />;
       case 'patient':
         return <PatientScreen navigate={navigate} />;
       case 'caregiverDashboard':
@@ -28,7 +31,7 @@ function App() {
       case 'listeningInsights':
         return <ListeningInsights navigate={navigate} />;
       default:
-        return <PatientScreen navigate={navigate} />;
+        return <LoginScreen navigate={navigate} />;
     }
   };
 

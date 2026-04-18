@@ -1,4 +1,5 @@
 export type Screen =
+  | 'login'
   | 'patient'
   | 'caregiverDashboard'
   | 'editPatientProfile'
