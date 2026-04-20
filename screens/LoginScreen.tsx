@@ -21,13 +21,41 @@ type Role = 'patient' | 'caregiver' | null;
 export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
   const insets = useSafeAreaInsets();
   const [role, setRole] = useState<Role>(null);
+  const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const [confirmFocused, setConfirmFocused] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const isPatient = role === 'patient';
+  const isCaregiver = role === 'caregiver';
+
+  const selectRole = (next: Role) => {
+    setRole(next);
+    if (next === 'patient') {
+      setIsSignUpMode(false);
+      setConfirmPassword('');
+    }
+  };
+
+  const passwordsMatch =
+    !isSignUpMode || (password === confirmPassword && password.length > 0);
+  const passwordLongEnough = password.length >= 6;
+  const canSubmitCaregiverSignUp =
+    isCaregiver &&
+    isSignUpMode &&
+    email.length > 0 &&
+    passwordLongEnough &&
+    confirmPassword.length > 0 &&
+    passwordsMatch;
+  const canSubmitCaregiverSignIn =
+    isCaregiver &&
+    !isSignUpMode &&
+    email.length > 0 &&
+    password.length > 0;
 
   const handleLogin = async () => {
     if (!role) return;
@@ -35,10 +63,37 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
       navigate('patient');
       return;
     }
-    // Caregiver: authenticate via Firebase
+    if (isSignUpMode) {
+      if (!passwordLongEnough) {
+        Alert.alert(
+          'Password too short',
+          'Use at least 6 characters (Firebase requirement).',
+        );
+        return;
+      }
+      if (!passwordsMatch) {
+        Alert.alert('Passwords do not match', 'Re-enter the same password twice.');
+        return;
+      }
+      setLoading(true);
+      try {
+        const result = await api.caregiverSignUp(email.trim(), password);
+        if (result.ok) {
+          navigate('caregiverDashboard');
+        } else {
+          Alert.alert('Could not create account', result.error ?? 'Please try again.');
+        }
+      } catch {
+        Alert.alert('Sign up failed', 'Unable to connect. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     try {
-      const ok = await api.caregiverSignIn(email, password);
+      const ok = await api.caregiverSignIn(email.trim(), password);
       if (ok) {
         navigate('caregiverDashboard');
       } else {
@@ -53,7 +108,8 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
 
   const canLogin =
     role === 'patient' ||
-    (role === 'caregiver' && email.length > 0 && password.length > 0);
+    canSubmitCaregiverSignIn ||
+    canSubmitCaregiverSignUp;
 
   return (
     <KeyboardAvoidingView
@@ -87,21 +143,23 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
               subtitle="Simple music player"
               icon="♪"
               selected={role === 'patient'}
-              onPress={() => setRole('patient')}
+              onPress={() => selectRole('patient')}
             />
             <RoleCard
               title="Caregiver"
               subtitle="Manage & monitor"
               icon="♡"
               selected={role === 'caregiver'}
-              onPress={() => setRole('caregiver')}
+              onPress={() => selectRole('caregiver')}
             />
           </View>
         </View>
 
         {/* Credential fields */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Sign in</Text>
+          <Text style={styles.sectionLabel}>
+            {isCaregiver && isSignUpMode ? 'Create account' : 'Sign in'}
+          </Text>
 
           <View
             style={[
@@ -132,7 +190,7 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
             ]}>
             <TextInput
               style={[styles.input, isPatient && styles.inputLarge]}
-              placeholder="Password"
+              placeholder={isCaregiver && isSignUpMode ? 'Password (min. 6 characters)' : 'Password'}
               placeholderTextColor="#9CA3AF"
               value={password}
               onChangeText={setPassword}
@@ -142,7 +200,27 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
             />
           </View>
 
-          {!isPatient && (
+          {isCaregiver && isSignUpMode ? (
+            <View
+              style={[
+                styles.inputWrap,
+                confirmFocused && styles.inputWrapFocused,
+                { marginTop: 12 },
+              ]}>
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm password"
+                placeholderTextColor="#9CA3AF"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                onFocus={() => setConfirmFocused(true)}
+                onBlur={() => setConfirmFocused(false)}
+              />
+            </View>
+          ) : null}
+
+          {!isPatient && !isSignUpMode && (
             <Pressable style={styles.forgotWrap}>
               <Text style={styles.forgotText}>Forgot password?</Text>
             </Pressable>
@@ -163,17 +241,42 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <Text style={[styles.loginBtnText, isPatient && styles.loginBtnTextLarge]}>
-              {role === 'patient' ? 'Start Listening' : role === 'caregiver' ? 'Go to Dashboard' : 'Sign In'}
+              {role === 'patient'
+                ? 'Start Listening'
+                : role === 'caregiver' && isSignUpMode
+                  ? 'Create account'
+                  : role === 'caregiver'
+                    ? 'Go to Dashboard'
+                    : 'Sign In'}
             </Text>
           )}
         </Pressable>
 
-        {!isPatient && (
+        {!isPatient && isCaregiver && (
           <View style={styles.signupRow}>
-            <Text style={styles.signupText}>New to MemoryTune? </Text>
-            <Pressable>
-              <Text style={styles.signupLink}>Create account</Text>
-            </Pressable>
+            {isSignUpMode ? (
+              <>
+                <Text style={styles.signupText}>Already have an account? </Text>
+                <Pressable
+                  onPress={() => {
+                    setIsSignUpMode(false);
+                    setConfirmPassword('');
+                  }}>
+                  <Text style={styles.signupLink}>Sign in</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={styles.signupText}>New to MemoryTune? </Text>
+                <Pressable
+                  onPress={() => {
+                    selectRole('caregiver');
+                    setIsSignUpMode(true);
+                  }}>
+                  <Text style={styles.signupLink}>Create account</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         )}
       </ScrollView>

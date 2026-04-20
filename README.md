@@ -89,7 +89,7 @@ OAuth tokens are stored under **patientSecrets** so the patient app never receiv
 cd backend && pip install -r requirements.txt
 ```
 
-Set `GOOGLE_APPLICATION_CREDENTIALS` or `FIREBASE_SERVICE_ACCOUNT_PATH` to a service account JSON file.
+Set **`FIREBASE_SERVICE_ACCOUNT_PATH`** (recommended) or **`GOOGLE_APPLICATION_CREDENTIALS`** to the **absolute path** of a service account JSON file (Firebase Console → Project settings → **Service accounts** → **Generate new private key**). Optionally set **`FIREBASE_PROJECT_ID`** (same value as in the app `.env`). Without this file, `POST /auth/firebase` returns 401 because ID tokens cannot be verified locally.
 
 Environment variables:
 

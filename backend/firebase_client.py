@@ -34,12 +34,24 @@ def init_firebase() -> None:
     cred_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH") or os.getenv(
         "GOOGLE_APPLICATION_CREDENTIALS"
     )
+    project_id = os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+
+    if not cred_path or not os.path.isfile(cred_path):
+        print(
+            "Firebase Admin: set FIREBASE_SERVICE_ACCOUNT_PATH (or GOOGLE_APPLICATION_CREDENTIALS) "
+            "to the absolute path of your service account JSON from Firebase Console → "
+            "Project settings → Service accounts → Generate new private key. "
+            "/auth/firebase and Firestore will not work until this is set."
+        )
+        _db = None
+        return
+
     try:
-        if cred_path and os.path.isfile(cred_path):
-            cred = credentials.Certificate(cred_path)
-            firebase_admin.initialize_app(cred)
-        else:
-            firebase_admin.initialize_app()
+        cred = credentials.Certificate(cred_path)
+        options = {}
+        if project_id:
+            options["projectId"] = project_id
+        firebase_admin.initialize_app(cred, options)
         _db = firestore.client()
     except Exception as e:
         print(f"Firebase Admin not initialized: {e}")
@@ -47,7 +59,7 @@ def init_firebase() -> None:
 
 
 def verify_id_token(id_token: str) -> Optional[str]:
-    if not firebase_admin._apps:
+    if not firebase_admin._apps or _db is None:
         return None
     try:
         decoded = firebase_auth.verify_id_token(id_token)

@@ -7,8 +7,27 @@
  * BASE_URL for physical device → replace with your machine's local IP, e.g. http://192.168.1.x:5001
  * BASE_URL for Android emulator → http://10.0.2.2:5001
  */
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
 import { getFirebaseAuth } from '../src/firebase/index';
+
+function firebaseAuthErrorMessage(code: string | undefined): string {
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'That email is already registered. Try signing in instead.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/weak-password':
+      return 'Password should be at least 6 characters.';
+    case 'auth/network-request-failed':
+      return 'Network error. Check your connection.';
+    default:
+      return 'Something went wrong. Please try again.';
+  }
+}
 
 const BASE_URL = 'http://localhost:5001';
 
@@ -82,6 +101,41 @@ export const api = {
     } catch (e) {
       console.warn('caregiverSignIn error:', e);
       return false;
+    }
+  },
+
+  /**
+   * Register a new caregiver (Firebase Auth) and register the Flask session.
+   */
+  async caregiverSignUp(
+    email: string,
+    password: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const auth = getFirebaseAuth();
+      if (!auth) {
+        return { ok: false, error: 'Firebase is not configured. Add keys to .env.' };
+      }
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const idToken = await cred.user.getIdToken();
+      _firebaseIdToken = idToken;
+      const res = await fetch(`${BASE_URL}/auth/firebase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      const data = await res.json();
+      if (data.ok === true) {
+        return { ok: true };
+      }
+      return { ok: false, error: 'Server could not verify your session.' };
+    } catch (e: unknown) {
+      const err = e as { code?: string };
+      console.warn('caregiverSignUp error:', e);
+      return {
+        ok: false,
+        error: firebaseAuthErrorMessage(err.code),
+      };
     }
   },
 
