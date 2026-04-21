@@ -119,7 +119,6 @@ function InlineAdd({
 
   return (
     <Pressable style={styles.addBtn} onPress={() => setOpen(true)}>
-      <Text style={styles.addBtnIcon}>✏</Text>
       <Text style={styles.addBtnText}>{label}</Text>
     </Pressable>
   );
@@ -128,18 +127,12 @@ function InlineAdd({
 export default function SafetySettings({ navigate }: { navigate: NavigateFn }) {
   const insets = useSafeAreaInsets();
 
-  const [blockedSongs,   setBlockedSongs]   = useState<string[]>([
-    'My Way by Fetty Wap',
-    'Unforgettable by French Montana',
-    '2024 by Playboi Carti',
-  ]);
-  const [blockedArtists, setBlockedArtists] = useState<string[]>([
-    'Elvis Presley', 'Yeat', 'Destroy Lonely',
-  ]);
+  const [blockedSongs,   setBlockedSongs]   = useState<string[]>([]);
+  const [blockedArtists, setBlockedArtists] = useState<string[]>([]);
   const [prefs, setPrefs] = useState<PlaybackPrefs>({
-    continuous_playback: true,
-    gentle_transition:   true,
-    allow_explicit:      false,
+    continuous_playback: false,
+    gentle_transition:   false,
+    allow_explicit:      true,
   });
 
   // Load from backend on mount
@@ -219,17 +212,25 @@ export default function SafetySettings({ navigate }: { navigate: NavigateFn }) {
         {/* Blocked Songs */}
         <Text style={styles.sectionTitle}>Blocked Songs</Text>
         <View style={styles.listCard}>
-          <BlockList items={blockedSongs} onRemove={removeSong} />
+          {blockedSongs.length > 0 ? (
+            <BlockList items={blockedSongs} onRemove={removeSong} />
+          ) : (
+          <Text style={styles.emptyText}>No blocked songs</Text>
+          )}
           <View style={styles.listDivider} />
-          <InlineAdd label="Add More Songs" placeholder="Song name by artist…" onAdd={addSong} />
+          <InlineAdd label="Add More Songs" placeholder="Example: Bohemian Rhapsody by Queen" onAdd={addSong} />
         </View>
 
         {/* Blocked Artists */}
         <Text style={[styles.sectionTitle, styles.sectionMarginTop]}>Blocked Artists</Text>
         <View style={styles.listCard}>
-          <BlockList items={blockedArtists} onRemove={removeArtist} />
+          {blockedArtists.length > 0 ? (
+            <BlockList items={blockedArtists} onRemove={removeArtist} />
+          ) : (
+            <Text style={styles.emptyText}>No blocked artists</Text>
+        )}
           <View style={styles.listDivider} />
-          <InlineAdd label="Add More Artists" placeholder="Artist name…" onAdd={addArtist} />
+          <InlineAdd label="Add More Artists" placeholder="Example: Elvis Presley" onAdd={addArtist} />
         </View>
 
         {/* Playback Preferences */}
@@ -268,7 +269,7 @@ const styles = StyleSheet.create({
   backBtn:  { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   backText: { fontSize: 26, color: '#111827', fontWeight: '300' },
   logo:     { width: 48, height: 48, opacity: 0.45 },
-  title:    { fontSize: 28, fontWeight: '800', color: '#111827', marginBottom: 20 },
+  title:    { fontSize: 28, fontWeight: '800', color: '#111827', marginBottom: 20, textAlign: 'center' },
   sectionTitle: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 10 },
   sectionMarginTop: { marginTop: 28 },
   listCard: {

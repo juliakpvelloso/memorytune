@@ -139,28 +139,21 @@ function NavButton({ icon, label, onPress }: NavButtonProps) {
 
 export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn }) {
   const insets = useSafeAreaInsets();
-  const [patientName, setPatientName]         = useState('Margaret Thompson');
-  const [lastPlayed, setLastPlayed]           = useState('Beyond the Sea');
-  const [listeningMins, setListeningMins]     = useState(42);
-  const [spotifyConnected, setSpotifyConnected] = useState(api.isAuthenticated());
+  const [patientName, setPatientName]         = useState('');
+  const [lastPlayed, setLastPlayed]           = useState('');
+  const [listeningMins, setListeningMins]     = useState(0);
+  const [profilePic, setProfilePic] = useState(null); // Add this
 
   useEffect(() => {
-    api.getUserProfile()
-      .then(profile => {
-        setPatientName(profile.name);
-        setLastPlayed(profile.last_played);
-        setListeningMins(profile.listening_today_minutes);
-        setSpotifyConnected(api.isAuthenticated());
-      })
-      .catch(() => { /* server not running – keep defaults */ });
-  }, []);
-
-  const handleConnectSpotify = async () => {
-    await Linking.openURL(api.getLoginUrl());
-    // After user returns from browser, try to pick up the token
-    const ok = await api.fetchToken();
-    if (ok) setSpotifyConnected(true);
-  };
+  api.getUserProfile()
+    .then(profile => {
+      setPatientName(profile.name);
+      setProfilePic(profile.profile_image); // Update this based on your API key
+      setLastPlayed(profile.last_played);
+      setListeningMins(profile.listening_today_minutes);
+    })
+    .catch(() => { /* keep defaults */ });
+}, []);
 
   return (
     <View
@@ -186,26 +179,27 @@ export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn 
 
       <Text style={styles.title}>Dashboard</Text>
 
-      {/* Spotify connect strip */}
-      {!spotifyConnected && (
-        <Pressable style={styles.connectStrip} onPress={handleConnectSpotify}>
-          <Text style={styles.connectStripText}>♫  Connect Spotify to enable playback</Text>
-          <Text style={styles.connectStripArrow}>→</Text>
-        </Pressable>
-      )}
-
       {/* Patient card */}
       <View style={styles.card}>
-        <View style={styles.photoArea} />
+        <View style={styles.photoArea}>
+          <View style={styles.profileCircle}>
+          {profilePic ? (
+            <Image source={{ uri: profilePic }} style={styles.fullImage} />
+          ) : (
+            <View style={styles.placeholderGroup}>
+              <View style={styles.photoHead} />
+              <View style={styles.photoShoulders} />
+            </View>
+          )}
+        </View>
+      </View>
 
         <View style={styles.infoSection}>
           <Text style={styles.patientName}>{patientName}</Text>
           <View style={styles.statRow}>
-            <Text style={styles.statIcon}>♪</Text>
             <Text style={styles.statText}>Last Played: {lastPlayed}</Text>
           </View>
           <View style={styles.statRow}>
-            <Text style={styles.statIcon}>💡</Text>
             <Text style={styles.statText}>Listening today: {listeningMins} minutes</Text>
           </View>
         </View>
@@ -251,6 +245,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
     marginBottom: 10,
+    textAlign: 'center',
   },
   connectStrip: {
     flexDirection: 'row',
@@ -275,7 +270,35 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 14,
   },
-  photoArea:   { width: '100%', height: 120, backgroundColor: '#D1D5DB' },
+  photoArea: { 
+    width: '100%', 
+    height: 140, // Increased slightly to accommodate the circle
+    backgroundColor: '#D1D5DB', 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  profileCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 3,
+    borderColor: '#F3F4F6',
+    overflow: 'hidden', // Ensures the image stays round
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Optional: Add a slight shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
   infoSection: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 12, gap: 5 },
   patientName: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 4 },
   statRow:     { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -317,4 +340,8 @@ const styles = StyleSheet.create({
   switchBtnPressed:  { backgroundColor: '#F3F4F6' },
   switchBtnIcon:     { fontSize: 14, color: '#6B7280' },
   switchBtnText:     { fontSize: 14, color: '#6B7280', fontWeight: '600' },
+  placeholderGroup: { alignItems: 'center', justifyContent: 'flex-end', width: '100%', height: '100%' },
+  photoHead: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#111827', opacity: 0.7, position: 'absolute', top: 16 },
+  photoShoulders: { width: 70, height: 40, borderTopLeftRadius: 35, borderTopRightRadius: 35, backgroundColor: '#111827', opacity: 0.5 },
+  
 });

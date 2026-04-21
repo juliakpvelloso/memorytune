@@ -88,6 +88,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
     marginBottom: 20,
+    textAlign: 'center',
   },
   card: {
     backgroundColor: '#C8C8C8',

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../services/api';
@@ -30,6 +31,27 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
   const [confirmFocused, setConfirmFocused] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Animation values
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (role) {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: -30, // Subtle slide up
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [role]);
+
   const isPatient = role === 'patient';
   const isCaregiver = role === 'caregiver';
 
@@ -41,284 +63,178 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
     }
   };
 
-  const passwordsMatch =
-    !isSignUpMode || (password === confirmPassword && password.length > 0);
-  const passwordLongEnough = password.length >= 6;
-  const canSubmitCaregiverSignUp =
-    isCaregiver &&
-    isSignUpMode &&
-    email.length > 0 &&
-    passwordLongEnough &&
-    confirmPassword.length > 0 &&
-    passwordsMatch;
-  const canSubmitCaregiverSignIn =
-    isCaregiver &&
-    !isSignUpMode &&
-    email.length > 0 &&
-    password.length > 0;
+  const passwordsMatch = !isSignUpMode || (password === confirmPassword && password.length > 0);
+  const canLogin = (isPatient && email.length > 0 && password.length > 0) ||
+    (isCaregiver && !isSignUpMode && email.length > 0 && password.length > 0) ||
+    (isCaregiver && isSignUpMode && email.length > 0 && password.length >= 6 && passwordsMatch);
 
   const handleLogin = async () => {
     if (!role) return;
-
     setLoading(true);
     try {
       let ok = false;
-
       if (role === 'patient') {
-        // 1. Actually verify the patient credentials via API
         ok = await api.caregiverSignIn(email.trim(), password);
-        if (ok) {
-          navigate('patient');
-        }
+        if (ok) navigate('patient');
       } else if (isSignUpMode) {
-        // ... (keep your existing Caregiver Sign Up logic)
         const result = await api.caregiverSignUp(email.trim(), password);
         if (result.ok) navigate('caregiverDashboard');
-        return;
       } else {
-        // Caregiver Sign In
         ok = await api.caregiverSignIn(email.trim(), password);
         if (ok) navigate('caregiverDashboard');
       }
-
-      if (!ok && !isSignUpMode) {
-        Alert.alert('Sign in failed', 'Please check your email and password.');
-      }
+      if (!ok && !isSignUpMode) Alert.alert('Sign in failed', 'Please check your email and password.');
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      Alert.alert('Error', 'An unexpected error occurred.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Add this helper for patient validation
-  const canSubmitPatientSignIn = 
-    isPatient && 
-    email.length > 0 && 
-    password.length > 0;
-
-  // Update the master validation check
-  const canLogin =
-    canSubmitPatientSignIn || // Updated this line
-    canSubmitCaregiverSignIn ||
-    canSubmitCaregiverSignUp;
-
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: '#FFFFFF' }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 32 },
+          !role && { justifyContent: 'center' }, // Center content initially
+          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 32 },
         ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}>
-
-        {/* Logo + brand */}
-        <View style={styles.brand}>
-          <Image
-            source={require('../assets/logo.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={styles.appName}>MemoryTune</Text>
-          <Text style={styles.tagline}>Music for every memory</Text>
-        </View>
-
-        {/* Role selector */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>I am a…</Text>
-          <View style={styles.roleRow}>
-            <RoleCard
-              title="Patient"
-              subtitle="Simple music player"
-              icon="♪"
-              selected={role === 'patient'}
-              onPress={() => selectRole('patient')}
-            />
-            <RoleCard
-              title="Caregiver"
-              subtitle="Manage & monitor"
-              icon="♡"
-              selected={role === 'caregiver'}
-              onPress={() => selectRole('caregiver')}
-            />
-          </View>
-        </View>
-
-        {/* Credential fields */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>
-            {isCaregiver && isSignUpMode ? 'Create account' : 'Sign in'}
-          </Text>
-
-          <View
-            style={[
-              styles.inputWrap,
-              emailFocused && styles.inputWrapFocused,
-              isPatient && styles.inputWrapLarge,
-            ]}>
-            <TextInput
-              style={[styles.input, isPatient && styles.inputLarge]}
-              placeholder="Email address"
-              placeholderTextColor="#9CA3AF"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              onFocus={() => setEmailFocused(true)}
-              onBlur={() => setEmailFocused(false)}
-            />
+        keyboardShouldPersistTaps="handled">
+        
+        <Animated.View style={{ transform: [{ translateY: slideAnim }] }}>
+          {/* Logo + Brand */}
+          <View style={styles.brand}>
+            <Image source={require('../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+            <Text style={styles.appName}>MemoryTune</Text>
+            <Text style={styles.tagline}>Music for every memory</Text>
           </View>
 
-          <View
-            style={[
-              styles.inputWrap,
-              passwordFocused && styles.inputWrapFocused,
-              isPatient && styles.inputWrapLarge,
-              { marginTop: 12 },
-            ]}>
-            <TextInput
-              style={[styles.input, isPatient && styles.inputLarge]}
-              placeholder={isCaregiver && isSignUpMode ? 'Password (min. 6 characters)' : 'Password'}
-              placeholderTextColor="#9CA3AF"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              onFocus={() => setPasswordFocused(true)}
-              onBlur={() => setPasswordFocused(false)}
-            />
-          </View>
-
-          {isCaregiver && isSignUpMode ? (
-            <View
-              style={[
-                styles.inputWrap,
-                confirmFocused && styles.inputWrapFocused,
-                { marginTop: 12 },
-              ]}>
-              <TextInput
-                style={styles.input}
-                placeholder="Confirm password"
-                placeholderTextColor="#9CA3AF"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-                onFocus={() => setConfirmFocused(true)}
-                onBlur={() => setConfirmFocused(false)}
+          {/* Role selector */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>I am a…</Text>
+            <View style={styles.roleRow}>
+              <RoleCard
+                title="Patient"
+                subtitle="Simple music player"
+                icon="♪"
+                selected={role === 'patient'}
+                onPress={() => selectRole('patient')}
+              />
+              <RoleCard
+                title="Caregiver"
+                subtitle="Manage & Monitor"
+                icon="♡"
+                selected={role === 'caregiver'}
+                onPress={() => selectRole('caregiver')}
               />
             </View>
-          ) : null}
-
-          {!isPatient && !isSignUpMode && (
-            <Pressable style={styles.forgotWrap}>
-              <Text style={styles.forgotText}>Forgot password?</Text>
-            </Pressable>
-          )}
-        </View>
-
-        {/* Login button */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.loginBtn,
-            isPatient && styles.loginBtnLarge,
-            (!canLogin || loading) && styles.loginBtnDisabled,
-            pressed && canLogin && !loading && styles.loginBtnPressed,
-          ]}
-          onPress={handleLogin}
-          disabled={!canLogin || loading}>
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={[styles.loginBtnText, isPatient && styles.loginBtnTextLarge]}>
-              {role === 'patient'
-                ? 'Start Listening'
-                : role === 'caregiver' && isSignUpMode
-                  ? 'Create account'
-                  : role === 'caregiver'
-                    ? 'Go to Dashboard'
-                    : 'Sign In'}
-            </Text>
-          )}
-        </Pressable>
-
-        {!isPatient && isCaregiver && (
-          <View style={styles.signupRow}>
-            {isSignUpMode ? (
-              <>
-                <Text style={styles.signupText}>Already have an account? </Text>
-                <Pressable
-                  onPress={() => {
-                    setIsSignUpMode(false);
-                    setConfirmPassword('');
-                  }}>
-                  <Text style={styles.signupLink}>Sign in</Text>
-                </Pressable>
-              </>
-            ) : (
-              <>
-                <Text style={styles.signupText}>New to MemoryTune? </Text>
-                <Pressable
-                  onPress={() => {
-                    selectRole('caregiver');
-                    setIsSignUpMode(true);
-                  }}>
-                  <Text style={styles.signupLink}>Create account</Text>
-                </Pressable>
-              </>
-            )}
           </View>
-        )}
+
+          {/* Animated Input Section */}
+          {role && (
+            <Animated.View style={{ opacity: fadeAnim }}>
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>
+                  {isCaregiver && isSignUpMode ? 'Create account' : 'Sign in'}
+                </Text>
+
+                <View style={[styles.inputWrap, emailFocused && styles.inputWrapFocused, isPatient && styles.inputWrapLarge]}>
+                  <TextInput
+                    style={[styles.input, isPatient && styles.inputLarge]}
+                    placeholder="Email address"
+                    placeholderTextColor="#9CA3AF"
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    onFocus={() => setEmailFocused(true)}
+                    onBlur={() => setEmailFocused(false)}
+                  />
+                </View>
+
+                <View style={[styles.inputWrap, passwordFocused && styles.inputWrapFocused, isPatient && styles.inputWrapLarge, { marginTop: 12 }]}>
+                  <TextInput
+                    style={[styles.input, isPatient && styles.inputLarge]}
+                    placeholder={isCaregiver && isSignUpMode ? 'Password (min. 6)' : 'Password'}
+                    placeholderTextColor="#9CA3AF"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                    onFocus={() => setPasswordFocused(true)}
+                    onBlur={() => setPasswordFocused(false)}
+                  />
+                </View>
+
+                {isCaregiver && isSignUpMode && (
+                  <View style={[styles.inputWrap, confirmFocused && styles.inputWrapFocused, { marginTop: 12 }]}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Confirm password"
+                      placeholderTextColor="#9CA3AF"
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      secureTextEntry
+                      onFocus={() => setConfirmFocused(true)}
+                      onBlur={() => setConfirmFocused(false)}
+                    />
+                  </View>
+                )}
+
+                {/* Forgot Password Button */}
+                {!isPatient && !isSignUpMode && (
+                  <Pressable style={styles.forgotWrap}>
+                    <Text style={styles.forgotText}>Forgot password?</Text>
+                  </Pressable>
+                )}
+              </View>
+
+              {/* Login Button */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.loginBtn,
+                  isPatient && styles.loginBtnLarge,
+                  (!canLogin || loading) && styles.loginBtnDisabled,
+                  pressed && canLogin && !loading && styles.loginBtnPressed,
+                ]}
+                onPress={handleLogin}
+                disabled={!canLogin || loading}>
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={[styles.loginBtnText, isPatient && styles.loginBtnTextLarge]}>
+                    {isPatient ? 'Start Listening' : isSignUpMode ? 'Create account' : 'Go to Dashboard'}
+                  </Text>
+                )}
+              </Pressable>
+
+              {/* Sign Up Toggle */}
+              {!isPatient && isCaregiver && (
+                <View style={styles.signupRow}>
+                  <Text style={styles.signupText}>
+                    {isSignUpMode ? 'Already have an account? ' : 'New to MemoryTune? '}
+                  </Text>
+                  <Pressable onPress={() => setIsSignUpMode(!isSignUpMode)}>
+                    <Text style={styles.signupLink}>{isSignUpMode ? 'Sign in' : 'Create account'}</Text>
+                  </Pressable>
+                </View>
+              )}
+            </Animated.View>
+          )}
+        </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-function RoleCard({
-  title,
-  subtitle,
-  icon,
-  selected,
-  onPress,
-}: {
-  title: string;
-  subtitle: string;
-  icon: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.roleCard,
-        selected && styles.roleCardSelected,
-        pressed && !selected && styles.roleCardPressed,
-      ]}
-      onPress={onPress}>
-      <Text style={[styles.roleIcon, selected && styles.roleIconSelected]}>
-        {icon}
-      </Text>
-      <Text style={[styles.roleTitle, selected && styles.roleTitleSelected]}>
-        {title}
-      </Text>
-      <Text style={[styles.roleSubtitle, selected && styles.roleSubtitleSelected]}>
-        {subtitle}
-      </Text>
-      {selected && <View style={styles.roleCheckDot} />}
-    </Pressable>
-  );
-}
-
+// ... RoleCard and Styles remain mostly the same ...
+// Added roleRow gap support for older RN versions via View
 const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 24,
   },
-
-  /* Brand */
   brand: {
     alignItems: 'center',
     marginBottom: 36,
@@ -338,10 +254,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9CA3AF',
     marginTop: 4,
-    letterSpacing: 0.2,
   },
-
-  /* Section */
   section: {
     marginBottom: 28,
   },
@@ -353,22 +266,19 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 12,
   },
-
-  /* Role cards */
   roleRow: {
     flexDirection: 'row',
-    gap: 12,
+    justifyContent: 'space-between',
   },
   roleCard: {
-    flex: 1,
+    width: '48%',
     backgroundColor: '#F3F4F6',
     borderRadius: 20,
     paddingVertical: 20,
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     alignItems: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
-    position: 'relative',
   },
   roleCardSelected: {
     backgroundColor: '#111827',
@@ -377,31 +287,12 @@ const styles = StyleSheet.create({
   roleCardPressed: {
     backgroundColor: '#E5E7EB',
   },
-  roleIcon: {
-    fontSize: 28,
-    marginBottom: 8,
-    color: '#6B7280',
-  },
-  roleIconSelected: {
-    color: '#FFFFFF',
-  },
-  roleTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  roleTitleSelected: {
-    color: '#FFFFFF',
-  },
-  roleSubtitle: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    textAlign: 'center',
-  },
-  roleSubtitleSelected: {
-    color: '#D1D5DB',
-  },
+  roleIcon: { fontSize: 28, marginBottom: 8, color: '#6B7280' },
+  roleIconSelected: { color: '#FFFFFF' },
+  roleTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 },
+  roleTitleSelected: { color: '#FFFFFF' },
+  roleSubtitle: { fontSize: 12, color: '#9CA3AF', textAlign: 'center' },
+  roleSubtitleSelected: { color: '#D1D5DB' },
   roleCheckDot: {
     position: 'absolute',
     top: 10,
@@ -411,8 +302,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#FFFFFF',
   },
-
-  /* Inputs */
   inputWrap: {
     backgroundColor: '#F3F4F6',
     borderRadius: 14,
@@ -428,16 +317,24 @@ const styles = StyleSheet.create({
   inputWrapLarge: {
     borderRadius: 18,
     paddingVertical: 18,
-    paddingHorizontal: 20,
   },
-  input: {
-    fontSize: 16,
-    color: '#111827',
-    padding: 0,
+  input: { fontSize: 16, color: '#111827' },
+  inputLarge: { fontSize: 20 },
+  loginBtn: {
+    backgroundColor: '#111827',
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  inputLarge: {
-    fontSize: 20,
-  },
+  loginBtnLarge: { borderRadius: 20, paddingVertical: 22 },
+  loginBtnDisabled: { backgroundColor: '#D1D5DB' },
+  loginBtnPressed: { backgroundColor: '#374151' },
+  loginBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  loginBtnTextLarge: { fontSize: 22 },
+  signupRow: { flexDirection: 'row', justifyContent: 'center' },
+  signupText: { fontSize: 14, color: '#9CA3AF' },
+  signupLink: { fontSize: 14, fontWeight: '700', color: '#111827' },
   forgotWrap: {
     alignItems: 'flex-end',
     marginTop: 10,
@@ -446,49 +343,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
   },
-
-  /* Login button */
-  loginBtn: {
-    backgroundColor: '#111827',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  loginBtnLarge: {
-    borderRadius: 20,
-    paddingVertical: 22,
-  },
-  loginBtnDisabled: {
-    backgroundColor: '#D1D5DB',
-  },
-  loginBtnPressed: {
-    backgroundColor: '#374151',
-  },
-  loginBtnText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  loginBtnTextLarge: {
-    fontSize: 22,
-    letterSpacing: 0.2,
-  },
-
-  /* Sign up */
-  signupRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  signupText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-  },
-  signupLink: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
 });
+
+function RoleCard({ title, subtitle, icon, selected, onPress }: any) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.roleCard,
+        selected && styles.roleCardSelected,
+        pressed && !selected && styles.roleCardPressed,
+      ]}
+      onPress={onPress}>
+      <Text style={[styles.roleIcon, selected && styles.roleIconSelected]}>{icon}</Text>
+      <Text style={[styles.roleTitle, selected && styles.roleTitleSelected]}>{title}</Text>
+      <Text style={[styles.roleSubtitle, selected && styles.roleSubtitleSelected]}>{subtitle}</Text>
+      {selected && <View style={styles.roleCheckDot} />}
+    </Pressable>
+  );
+}
