@@ -62,12 +62,16 @@ export interface NowPlaying {
   is_playing?: boolean;
   message?: string;
   error?: string;
+  album_cover?: string;
 }
 
 // ── API client ────────────────────────────────────────────────────────────────
 export const api = {
   /** Returns the Spotify OAuth URL to open in the system browser. */
-  getLoginUrl(): string {
+  getLoginUrl(patientId?: string): string {
+    if (patientId) {
+      return `${BASE_URL}/login?patient_id=${patientId}`;
+    }
     return `${BASE_URL}/login`;
   },
 

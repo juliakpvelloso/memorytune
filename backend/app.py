@@ -52,22 +52,34 @@ def background_session_tracker():
 
 def get_spotify_client():
     """Helper to get an authorized client or None if unauthorized."""
+    # First, try to get token from session (normal flow)
     token = auth_manager.get_token(session.get("firebase_patient_id"))
-    if not token:
-        return None
-
-    user_id = session.get("firebase_patient_id") or "default"
-
-    # Reuse existing client if exists
-    if user_id in session_clients:
-        return session_clients[user_id]
-
-    # Otherwise create + initialize tracking
-    client = SpotifyClient(token)
-    client.start_session_tracking()
-
-    session_clients[user_id] = client
-    return client
+<<<<<<< Updated upstream
+    return SpotifyClient(token) if token else None
+=======
+    if token:
+        user_id = session.get("firebase_patient_id") or "default"
+        if user_id in session_clients:
+            return session_clients[user_id]
+        client = SpotifyClient(token)
+        client.start_session_tracking()
+        session_clients[user_id] = client
+        return client
+    
+    # Fallback: check Authorization header for direct Spotify token (for API calls)
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]
+        user_id = session.get("firebase_patient_id") or "header-auth"
+        if user_id in session_clients:
+            return session_clients[user_id]
+        client = SpotifyClient(token)
+        client.start_session_tracking()
+        session_clients[user_id] = client
+        return client
+    
+    return None
+>>>>>>> Stashed changes
 
 @app.route('/')
 def index():
@@ -244,6 +256,8 @@ def api_caregiver_patients():
         "patients": patients,
     })
 
+<<<<<<< Updated upstream
+=======
 # ── JSON API endpoints (consumed by React Native app) ─────────────────────────
 
 @app.route('/api/token', methods=['GET'])
@@ -260,21 +274,32 @@ def api_currently_playing():
     spotify = get_spotify_client()
     if not spotify:
         return jsonify({"error": "not authenticated"}), 401
+    
     data = spotify.get_currently_playing()
     if not data or not data.get("item"):
         return jsonify({"song": None, "artist": None, "is_playing": False})
+    
     item = data["item"]
     song = item.get("name")
     artist = item.get("artists", [{}])[0].get("name")
+    
+    # Extract the album cover URL
+    # images[0] is typically the highest resolution (640x640)
+    images = item.get("album", {}).get("images", [])
+    album_cover = images[0].get("url") if images else None
+    
     is_playing = data.get("is_playing", False)
     progress_ms = data.get("progress_ms")
     duration_ms = item.get("duration_ms")
+    
     pid = session.get("firebase_patient_id")
     if pid and is_firebase_ready():
         sync_now_playing(pid, song, artist)
+        
     return jsonify({
         "song": song,
         "artist": artist,
+        "album_cover": album_cover,  # New field
         "is_playing": is_playing,
         "progress_ms": progress_ms,
         "duration_ms": duration_ms,
@@ -287,12 +312,25 @@ def api_play():
     if not spotify:
         return jsonify({"error": "not authenticated"}), 401
     pid = session.get("firebase_patient_id")
+    print(f"Starting playback for patient {pid}")
     engine = RecommendationEngine()
     tracks = engine.get_recommendations_for_patient(pid, session.get('history', []))
-    for t in tracks:
-        uri = spotify.search_track(f"{t.song} {t.artist}")
-        if uri:
-            spotify.add_to_queue(uri)
+    if len(tracks) == 0:
+        print(f"No recommendations found for patient {pid}, playing era-based playlist if available.")
+        # p = get_patient(pid) or {}
+        # print(f"Patient data: {p}")
+        # mp = p.get("musicalPreference", {})
+        # eras = mp.get("eraPreferences", [])
+        # if len(eras) > 0:
+        playlist_uri = spotify.search_decade_playlist("1990")
+        spotify.play_decade_playlist(playlist_uri)
+    else:
+        print(f"Generated {len(tracks)} recommendations for patient {pid}")
+        for t in tracks:
+            uri = spotify.search_track(f"{t.song} {t.artist}")
+            if uri:
+                spotify.add_to_queue(uri)
+        spotify.skip_to_next()
     result = spotify._request("PUT", "me/player/play")
     return jsonify({"status": "playing", **({} if "error" not in result else {"error": result["error"]})})
 
@@ -379,6 +417,7 @@ def api_user_profile():
     return jsonify({"status": "ok"})
 
 
+>>>>>>> Stashed changes
 if __name__ == '__main__':
     tracker_thread = threading.Thread(target=background_session_tracker, daemon=True)
     tracker_thread.start()

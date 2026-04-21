@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PlaybackMedium from '../components/PlaybackMedium';
 import { api } from '../services/api';
+import { useAuth } from '../src/firebase/index';
 import type { NavigateFn } from '../types';
 
 const FALLBACK_SONGS = [
@@ -96,11 +97,13 @@ type Props = { navigate: NavigateFn; fromCaregiver: boolean };
 export default function PatientScreen({ navigate, fromCaregiver }: Props) {
   console.log("PATIENT SCREEN RENDERED");
   const insets = useSafeAreaInsets();
+  const auth = useAuth();
 
   // Playback state
   const [isPlaying, setIsPlaying]   = useState(false);
   const [song, setSong]             = useState(FALLBACK_SONGS[0].title);
   const [artist, setArtist]         = useState(FALLBACK_SONGS[0].artist);
+  const [albumCover, setAlbumCover] = useState<string | null>(null);
 
   // Spotify connection
   const [spotifyConnected, setSpotifyConnected] = useState(api.isAuthenticated());
@@ -111,20 +114,22 @@ export default function PatientScreen({ navigate, fromCaregiver }: Props) {
 
   // ── Polling currently-playing ──────────────────────────────────────────────
   const startPolling = () => {
-    if (pollRef.current) return;
-    pollRef.current = setInterval(async () => {
-      try {
-        const data = await api.getCurrentlyPlaying();
-        if (data.song) {
-          setSong(data.song);
-          setArtist(data.artist);
-          setIsPlaying(data.is_playing ?? false);
-        }
-      } catch {
-        // network error – keep last known state
+  if (pollRef.current) return;
+  pollRef.current = setInterval(async () => {
+    try {
+      const data = await api.getCurrentlyPlaying();
+      if (data.song) {
+        setSong(data.song);
+        setArtist(data.artist);
+        setIsPlaying(data.is_playing ?? false);
+        // Sync the album cover from the API response
+        setAlbumCover(data.album_cover ?? null); 
       }
-    }, 3000);
-  };
+    } catch {
+      // network error – keep last known state
+    }
+  }, 3000);
+};
 
   const stopPolling = () => {
     if (pollRef.current) {
@@ -187,7 +192,8 @@ export default function PatientScreen({ navigate, fromCaregiver }: Props) {
   const handleConnectSpotify = async () => {
     try {
       setConnecting(true);
-      const url = api.getLoginUrl();
+      const patientId = auth?.currentUser?.uid;
+      const url = api.getLoginUrl(patientId);
       await Linking.openURL(url);
     } catch (error) {
       setConnecting(false);
@@ -276,6 +282,7 @@ export default function PatientScreen({ navigate, fromCaregiver }: Props) {
           isPlaying={isPlaying}
           onPress={handleToggle}
           size={240}
+          albumCoverUri={albumCover} 
         />
       </View>
 

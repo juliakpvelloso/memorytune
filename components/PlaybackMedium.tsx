@@ -39,7 +39,7 @@ function PlaybackNote({
         Animated.delay(delayMs),
         Animated.timing(anim, {
           toValue: 1,
-          duration: 900,
+          duration: 5000,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
@@ -110,7 +110,7 @@ export default function PlaybackMedium({
     const loop = Animated.loop(
       Animated.timing(spin, {
         toValue: 1,
-        duration: 2200,
+        duration: 5000,
         easing: Easing.linear,
         useNativeDriver: true,
       }),
@@ -126,8 +126,8 @@ export default function PlaybackMedium({
     outputRange: ['0deg', '360deg'],
   });
 
-  const discSize = clamp(Math.round(size * 0.72), 48, 86);
-  const discBorderSize = Math.round(discSize * 1.08);
+  const discSize = Math.round(size * 0.85); // Takes up 85% of the player area
+  const discBorderSize = discSize; // Border is same size as disc to create a ring effect
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.root, { width: size, height: size }, pressed && styles.pressed]}>

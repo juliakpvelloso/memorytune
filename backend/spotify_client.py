@@ -64,6 +64,8 @@ class SpotifyClient:
     def transfer_playback(self, device_id: str, force_play: bool = False) -> Dict[str, Any]:
         payload = {"device_ids": [device_id], "play": force_play}
         return self._request("PUT", "me/player", json=payload)
+<<<<<<< Updated upstream
+=======
 
     # getting total playing time
     def start_session_tracking(self):
@@ -144,5 +146,56 @@ class SpotifyClient:
             "popularity": t.get("popularity")
         }
 
+    def search_decade_playlist(self, decade: str) -> Optional[str]:
+        if not decade:
+            return None
     
+        query = f"{decade} hits"
+        params = {"q": query, "type": "playlist", "limit": 5}
+    
+        data = self._request("GET", "search", params=params)
+
+        # 1. Safety Check: If data is None or contains an error key
+        if not data or "error" in data:
+            print(f"Spotify API Error: {data.get('error', 'Unknown error')}")
+            return None
+
+        # 2. Defensive Digging: Use .get() safely at each level
+        playlist_data = data.get("playlists")
+        if not playlist_data:
+            return None
+
+        items = playlist_data.get("items", [])
+    
+        # 3. Final Check: Ensure we actually found a playlist
+        if items and len(items) > 0:
+            return items[0].get("uri")
+        
+        return None
+
+    def play_decade_playlist(self, decade: str, device_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Searches for a decade playlist and starts playing it.
+        Returns status dict with success/error information.
+        """
+        # Search for the decade playlist
+        playlist_uri = self.search_decade_playlist(decade)
+        
+        if not playlist_uri:
+            return {"error": f"No playlist found for {decade}"}
+        
+        # Start playing the playlist
+        payload = {"context_uri": playlist_uri, "offset": {"position": 0}}
+        if device_id:
+            payload["device_id"] = device_id
+        
+        result = self._request("PUT", "me/player/play", json=payload)
+        
+        if "error" not in result:
+            return {"status": "playing", "decade": decade, "playlist_uri": playlist_uri}
+        
+        return result
+
+    
+>>>>>>> Stashed changes
     
