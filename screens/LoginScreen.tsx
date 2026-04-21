@@ -117,14 +117,14 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
             <View style={styles.roleRow}>
               <RoleCard
                 title="Patient"
-                subtitle="Simple player"
+                subtitle="Simple music player"
                 icon="♪"
                 selected={role === 'patient'}
                 onPress={() => selectRole('patient')}
               />
               <RoleCard
                 title="Caregiver"
-                subtitle="Manage"
+                subtitle="Manage & Monitor"
                 icon="♡"
                 selected={role === 'caregiver'}
                 onPress={() => selectRole('caregiver')}

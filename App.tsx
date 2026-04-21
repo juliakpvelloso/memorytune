@@ -23,11 +23,7 @@ function App() {
       return;
     }
 
-    if (auth.currentUser) {
-      // User is logged in - route to patient screen
-      setCurrentScreen('patientFromCaregiver');
-    } else {
-      // No user - show login
+    if (!auth.currentUser) {
       setCurrentScreen('login');
     }
   }, [auth?.currentUser]);
