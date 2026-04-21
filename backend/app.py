@@ -18,7 +18,9 @@ from firebase_client import (
     get_caregiver,
     get_patient,
     update_patient,
-    list_patients_for_caregiver
+    list_patients_for_caregiver,
+    upsert_caregiver,
+    create_patient_for_caregiver,
 )
 
 app = Flask(__name__)
@@ -76,6 +78,13 @@ def get_spotify_client():
         return client
     
     return None
+
+
+def _verified_caregiver_uid_from_header():
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return None
+    return verify_id_token(auth_header[7:])
 
 @app.route('/')
 def index():
@@ -223,15 +232,30 @@ def auth_firebase():
     return jsonify({"ok": True, "uid": uid})
 
 
+@app.route('/api/caregiver/bootstrap', methods=['POST'])
+def api_caregiver_bootstrap():
+    """Ensure caregiver profile doc exists at first sign-up/login."""
+    uid = _verified_caregiver_uid_from_header()
+    if not uid:
+        return jsonify({"error": "invalid token"}), 401
+    if not is_firebase_ready():
+        return jsonify({"error": "firebase not configured"}), 503
+    body = request.get_json(silent=True) or {}
+    upsert_caregiver(
+        uid,
+        {
+            "name": body.get("name", ""),
+            "email": body.get("email", ""),
+        },
+    )
+    session["firebase_uid"] = uid
+    return jsonify({"ok": True, "caregiver_id": uid})
+
+
 @app.route('/api/caregiver/patients', methods=['GET'])
 def api_caregiver_patients():
     """Returns the caregiver profile and their associated patient list."""
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return jsonify({"error": "missing bearer token"}), 401
-        
-    # Verify the Caregiver's identity
-    uid = verify_id_token(auth_header[7:])
+    uid = _verified_caregiver_uid_from_header()
     if not uid:
         return jsonify({"error": "invalid token"}), 401
         
@@ -251,6 +275,54 @@ def api_caregiver_patients():
         },
         "patients": patients,
     })
+
+
+@app.route('/api/caregiver/patients', methods=['POST'])
+def api_create_caregiver_patient():
+    uid = _verified_caregiver_uid_from_header()
+    if not uid:
+        return jsonify({"error": "invalid token"}), 401
+    if not is_firebase_ready():
+        return jsonify({"error": "firebase not configured"}), 503
+
+    payload = request.get_json(silent=True) or {}
+    patient_doc = {
+        "name": payload.get("name", ""),
+        "birthYear": str(payload.get("birth_year", "")),
+        "profileImage": payload.get("profile_image", ""),
+        "musicalPreference": {
+            "eraPreferences": payload.get("era_preferences", []),
+            "favArtists": payload.get("fav_artists", []),
+            "favGenres": payload.get("fav_genres", []),
+            "blacklistedSongs": payload.get("blocked_songs", []),
+            "blacklistedArtists": payload.get("blocked_artists", []),
+        },
+    }
+    patient_id = create_patient_for_caregiver(uid, patient_doc)
+    if not patient_id:
+        return jsonify({"error": "unable to create patient"}), 500
+    session["firebase_uid"] = uid
+    session["firebase_patient_id"] = patient_id
+    return jsonify({"ok": True, "patient_id": patient_id})
+
+
+@app.route('/api/caregiver/select-patient', methods=['POST'])
+def api_select_patient():
+    uid = _verified_caregiver_uid_from_header()
+    if not uid:
+        return jsonify({"error": "invalid token"}), 401
+    body = request.get_json(silent=True) or {}
+    patient_id = body.get("patient_id")
+    if not patient_id:
+        return jsonify({"error": "patient_id required"}), 400
+
+    patient = get_patient(patient_id) or {}
+    if patient.get("caregiverId") != uid:
+        return jsonify({"error": "patient does not belong to caregiver"}), 403
+
+    session["firebase_uid"] = uid
+    session["firebase_patient_id"] = patient_id
+    return jsonify({"ok": True, "patient_id": patient_id})
 
 # ── JSON API endpoints (consumed by React Native app) ─────────────────────────
 
@@ -361,6 +433,14 @@ def api_skip_prev():
 def api_user_profile():
     pid = session.get("firebase_patient_id")
     if not pid:
+        caregiver_uid = session.get("firebase_uid")
+        if caregiver_uid:
+            patients = list_patients_for_caregiver(caregiver_uid)
+            if patients:
+                pid = patients[0].get("_id")
+                if pid:
+                    session["firebase_patient_id"] = pid
+    if not pid:
         return jsonify({"error": "no patient session"}), 401
     if request.method == 'GET':
         patient = get_patient(pid) or {}
@@ -369,6 +449,7 @@ def api_user_profile():
         return jsonify({
             "name": patient.get("name", ""),
             "birth_year": str(patient.get("birthYear", "")),
+            "profile_image": patient.get("profileImage", ""),
             "era": prefs.get("era", ""),
             "fav_artists": prefs.get("favArtists", []),
             "fav_genres": prefs.get("favGenres", []),
@@ -390,6 +471,8 @@ def api_user_profile():
         firestore_updates["name"] = updates["name"]
     if "birth_year" in updates:
         firestore_updates["birthYear"] = updates["birth_year"]
+    if "profile_image" in updates:
+        firestore_updates["profileImage"] = updates["profile_image"]
     if "era" in updates:
         firestore_updates["musicalPreference.era"] = updates["era"]
     if "fav_artists" in updates:

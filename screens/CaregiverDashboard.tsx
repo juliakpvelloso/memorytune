@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../services/api';
 import type { NavigateFn } from '../types';
@@ -139,21 +139,35 @@ function NavButton({ icon, label, onPress }: NavButtonProps) {
 
 export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn }) {
   const insets = useSafeAreaInsets();
+  const [caregiverName, setCaregiverName] = useState('');
   const [patientName, setPatientName]         = useState('');
   const [lastPlayed, setLastPlayed]           = useState('');
   const [listeningMins, setListeningMins]     = useState(0);
-  const [profilePic, setProfilePic] = useState(null); // Add this
+  const [profilePic, setProfilePic] = useState<string | null>(null);
 
   useEffect(() => {
-  api.getUserProfile()
-    .then(profile => {
-      setPatientName(profile.name);
-      setProfilePic(profile.profile_image); // Update this based on your API key
-      setLastPlayed(profile.last_played);
-      setListeningMins(profile.listening_today_minutes);
-    })
-    .catch(() => { /* keep defaults */ });
-}, []);
+    api
+      .getCaregiverPatients()
+      .then(async data => {
+        setCaregiverName(data.caregiver?.name ?? '');
+        const firstPatient = data.patients?.[0];
+        if (!firstPatient) {
+          setPatientName('No patient yet');
+          setLastPlayed('');
+          setListeningMins(0);
+          return;
+        }
+        await api.selectPatient(firstPatient._id);
+        const profile = await api.getUserProfile();
+        setPatientName(profile.name || firstPatient.name || '');
+        setProfilePic(profile.profile_image || firstPatient.profileImage || null);
+        setLastPlayed(profile.last_played);
+        setListeningMins(profile.listening_today_minutes);
+      })
+      .catch(() => {
+        /* keep defaults */
+      });
+  }, []);
 
   return (
     <View
@@ -177,14 +191,14 @@ export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn 
         </View>
       </View>
 
-      <Text style={styles.title}>Dashboard</Text>
+      <Text style={styles.title}>{caregiverName ? `${caregiverName}'s Dashboard` : 'Dashboard'}</Text>
 
       {/* Patient card */}
       <View style={styles.card}>
         <View style={styles.photoArea}>
           <View style={styles.profileCircle}>
           {profilePic ? (
-            <Image source={{ uri: profilePic }} style={styles.fullImage} />
+            <Image source={{ uri: profilePic }} style={styles.profileImage} />
           ) : (
             <View style={styles.placeholderGroup}>
               <View style={styles.photoHead} />

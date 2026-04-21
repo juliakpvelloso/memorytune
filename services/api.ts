@@ -39,6 +39,7 @@ let _firebaseIdToken: string | null = null;
 export interface UserProfile {
   name: string;
   birth_year: string;
+  profile_image?: string;
   era: string;
   fav_artists: string[];
   fav_genres: string[];
@@ -63,6 +64,22 @@ export interface NowPlaying {
   message?: string;
   error?: string;
   album_cover?: string;
+}
+
+export interface CaregiverSummary {
+  id: string;
+  name?: string;
+  age?: number;
+  patientIds?: string[];
+}
+
+export interface CaregiverPatient {
+  _id: string;
+  caregiverId?: string;
+  name?: string;
+  birthYear?: string;
+  profileImage?: string;
+  nowPlayingSong?: string;
 }
 
 // ── API client ────────────────────────────────────────────────────────────────
@@ -105,7 +122,9 @@ export const api = {
         body: JSON.stringify({ idToken }),
       });
       const data = await res.json();
-      return data.ok === true;
+      if (data.ok !== true) return false;
+      await this.bootstrapCaregiverProfile(email);
+      return true;
     } catch (e) {
       console.warn('caregiverSignIn error:', e);
       return false;
@@ -134,6 +153,7 @@ export const api = {
       });
       const data = await res.json();
       if (data.ok === true) {
+        await this.bootstrapCaregiverProfile(email);
         return { ok: true };
       }
       return { ok: false, error: 'Server could not verify your session.' };
@@ -153,6 +173,48 @@ export const api = {
       if (auth) await signOut(auth);
     } catch { /* ignore */ }
     _firebaseIdToken = null;
+  },
+
+  async bootstrapCaregiverProfile(email: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}/api/caregiver/bootstrap`, {
+      method: 'POST',
+      headers: this._headers(),
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to bootstrap caregiver profile');
+    }
+  },
+
+  async getCaregiverPatients(): Promise<{
+    caregiver: CaregiverSummary;
+    patients: CaregiverPatient[];
+  }> {
+    const res = await fetch(`${BASE_URL}/api/caregiver/patients`, {
+      headers: this._headers(),
+    });
+    return res.json();
+  },
+
+  async createPatient(
+    updates: Partial<UserProfile> = {},
+  ): Promise<{ ok: boolean; patient_id?: string; error?: string }> {
+    const res = await fetch(`${BASE_URL}/api/caregiver/patients`, {
+      method: 'POST',
+      headers: this._headers(),
+      body: JSON.stringify(updates),
+    });
+    return res.json();
+  },
+
+  async selectPatient(patientId: string): Promise<boolean> {
+    const res = await fetch(`${BASE_URL}/api/caregiver/select-patient`, {
+      method: 'POST',
+      headers: this._headers(),
+      body: JSON.stringify({ patient_id: patientId }),
+    });
+    const data = await res.json();
+    return data.ok === true;
   },
 
   /**

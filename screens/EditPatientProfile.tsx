@@ -55,9 +55,34 @@ export default function EditPatientProfile({ navigate }: { navigate: NavigateFn 
   const [editingName, setEditingName] = useState(false);
   const [editingYear, setEditingYear] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [activePatientReady, setActivePatientReady] = useState(false);
+
+  const ensureActivePatient = async () => {
+    const data = await api.getCaregiverPatients();
+    const first = data.patients?.[0];
+    if (first?._id) {
+      await api.selectPatient(first._id);
+      setActivePatientReady(true);
+      return;
+    }
+    const created = await api.createPatient({
+      name: 'New Patient',
+      birth_year: '',
+      era_preferences: [],
+      blocked_songs: [],
+      blocked_artists: [],
+      fav_artists: [],
+      fav_genres: [],
+    });
+    if (created.ok && created.patient_id) {
+      await api.selectPatient(created.patient_id);
+      setActivePatientReady(true);
+    }
+  };
 
   useEffect(() => {
-    api.getUserProfile()
+    ensureActivePatient()
+      .then(() => api.getUserProfile())
       .then(p => {
         setName(p.name);
         setBirthYear(p.birth_year);
@@ -72,6 +97,13 @@ export default function EditPatientProfile({ navigate }: { navigate: NavigateFn 
   }, []);
 
   const syncProfile = async (data: any) => {
+    if (!activePatientReady) {
+      try {
+        await ensureActivePatient();
+      } catch {
+        return;
+      }
+    }
     setSaving(true);
     try { await api.updateUserProfile(data); } catch { /* ignore */ }
     setSaving(false);

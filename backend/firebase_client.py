@@ -80,6 +80,21 @@ def get_caregiver(caregiver_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def upsert_caregiver(
+    caregiver_id: str,
+    data: Optional[Dict[str, Any]] = None,
+) -> None:
+    if not _db or not caregiver_id:
+        return
+    try:
+        payload = data or {}
+        payload["updatedAt"] = firestore.SERVER_TIMESTAMP
+        payload.setdefault("createdAt", firestore.SERVER_TIMESTAMP)
+        _db.collection("caregivers").document(caregiver_id).set(payload, merge=True)
+    except Exception as e:
+        print(f"upsert_caregiver: {e}")
+
+
 def get_patient(patient_id: str) -> Optional[Dict[str, Any]]:
     if not _db or not patient_id:
         return None
@@ -88,6 +103,25 @@ def get_patient(patient_id: str) -> Optional[Dict[str, Any]]:
         return snap.to_dict() if snap.exists else None
     except Exception as e:
         print(f"get_patient: {e}")
+        return None
+
+
+def create_patient_for_caregiver(
+    caregiver_id: str,
+    patient_data: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    if not _db or not caregiver_id:
+        return None
+    try:
+        payload = patient_data or {}
+        payload["caregiverId"] = caregiver_id
+        payload["updatedAt"] = firestore.SERVER_TIMESTAMP
+        payload.setdefault("createdAt", firestore.SERVER_TIMESTAMP)
+        ref = _db.collection("patients").document()
+        ref.set(payload, merge=True)
+        return ref.id
+    except Exception as e:
+        print(f"create_patient_for_caregiver: {e}")
         return None
 
 
