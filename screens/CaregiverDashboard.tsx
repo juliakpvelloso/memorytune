@@ -197,11 +197,9 @@ export default function CaregiverDashboard({ navigate }: { navigate: NavigateFn 
         <View style={styles.infoSection}>
           <Text style={styles.patientName}>{patientName}</Text>
           <View style={styles.statRow}>
-            <Text style={styles.statIcon}>♪</Text>
             <Text style={styles.statText}>Last Played: {lastPlayed}</Text>
           </View>
           <View style={styles.statRow}>
-            <Text style={styles.statIcon}>💡</Text>
             <Text style={styles.statText}>Listening today: {listeningMins} minutes</Text>
           </View>
         </View>
