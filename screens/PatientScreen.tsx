@@ -14,11 +14,6 @@ import { api } from '../services/api';
 import { useAuth } from '../src/firebase/index';
 import type { NavigateFn } from '../types';
 
-const FALLBACK_SONGS = [
-  { title: 'Beyond the Sea', artist: 'Bobby Darin' },
-  { title: 'September', artist: 'Earth, Wind & Fire' },
-  { title: 'Everybody Wants To Rule The World', artist: 'Tears For Fears' },
-];
 
 // ── Transport icons ──────────────────────────────────────────────────────────
 
@@ -101,8 +96,8 @@ export default function PatientScreen({ navigate, fromCaregiver }: Props) {
 
   // Playback state
   const [isPlaying, setIsPlaying]   = useState(false);
-  const [song, setSong]             = useState(FALLBACK_SONGS[0].title);
-  const [artist, setArtist]         = useState(FALLBACK_SONGS[0].artist);
+  const [song, setSong]             = useState("Nothing Playing");
+  const [artist, setArtist]         = useState('');
   const [albumCover, setAlbumCover] = useState<string | null>(null);
 
   // Spotify connection
