@@ -29,7 +29,7 @@ function firebaseAuthErrorMessage(code: string | undefined): string {
   }
 }
 
-const BASE_URL = 'http://localhost:5001';
+const BASE_URL = 'http://127.0.0.1:5001';
 
 // ── In-memory token store (survives navigation, resets on app kill) ───────────
 let _spotifyToken: string | null = null;
@@ -77,6 +77,10 @@ export const api = {
 
   isCaregiverAuthenticated(): boolean {
     return !!_firebaseIdToken;
+  },
+
+  setManualToken(token: string) {
+    _spotifyToken = token;
   },
 
   /**

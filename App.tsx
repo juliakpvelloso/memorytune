@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useAuth } from './src/firebase/index';
 import type { Screen } from './types';
 import LoginScreen from './screens/LoginScreen';
 import PatientScreen from './screens/PatientScreen';
@@ -11,8 +12,25 @@ import SafetySettings from './screens/SafetySettings';
 import ListeningInsights from './screens/ListeningInsights';
 
 function App() {
+  const auth = useAuth();
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const navigate = (screen: Screen) => setCurrentScreen(screen);
+
+  // Route based on auth state
+  useEffect(() => {
+    if (!auth) {
+      // Auth still initializing
+      return;
+    }
+
+    if (auth.currentUser) {
+      // User is logged in - route to patient screen
+      setCurrentScreen('patient');
+    } else {
+      // No user - show login
+      setCurrentScreen('login');
+    }
+  }, [auth?.currentUser]);
 
   const renderScreen = () => {
     switch (currentScreen) {

@@ -94,6 +94,7 @@ const iconStyles = StyleSheet.create({
 type Props = { navigate: NavigateFn; fromCaregiver: boolean };
 
 export default function PatientScreen({ navigate, fromCaregiver }: Props) {
+  console.log("PATIENT SCREEN RENDERED");
   const insets = useSafeAreaInsets();
 
   // Playback state
@@ -138,26 +139,60 @@ export default function PatientScreen({ navigate, fromCaregiver }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spotifyConnected]);
 
-  // ── Detect return from browser (AppState foreground) to fetch token ────────
+  // -- Handle Deep Link Redirect from Spotify/Flask --
   useEffect(() => {
-    if (!connecting) return;
-    const sub = AppState.addEventListener('change', async nextState => {
-      if (nextState === 'active') {
-        const ok = await api.fetchToken();
-        if (ok) {
+    console.log("EFFECT: Deep link listener setting up...");
+    const handleUrl = (url: string | null) => {
+      
+      if (!url) return;
+
+      if (url.includes('memorytune://login-success')) {
+        console.log("Deep link received, extracting token...");
+      
+        // Extract the token from the URL (e.g., memorytune://login-success?token=abc)
+        const urlParts = url.split('token=');
+        if (urlParts.length > 1) {
+          const token = urlParts[1];
+          
+          // 1. Update the API store directly
+          api.setManualToken(token); 
+          
+          // 2. Update UI state
           setSpotifyConnected(true);
           setConnecting(false);
+          
+          console.log("Spotify connected successfully via URL token!");
+        } else {
+          console.warn("Deep link matched but no token found in URL");
+          setConnecting(false);
         }
+      } else {
+        console.warn("Received unrelated deep link:", url);
       }
-    });
-    return () => sub.remove();
-  }, [connecting]);
+    };
+
+    // Listen for the app being opened from a background state
+    const subscription = Linking.addEventListener('url', (event) => handleUrl(event.url));
+
+    // Check if the app was opened from a cold start via the link
+    Linking.getInitialURL().then((url) => handleUrl(url));
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
   const handleConnectSpotify = async () => {
-    setConnecting(true);
-    await Linking.openURL(api.getLoginUrl());
+    try {
+      setConnecting(true);
+      const url = api.getLoginUrl();
+      await Linking.openURL(url);
+    } catch (error) {
+      setConnecting(false);
+      console.error("Failed to open Spotify login", error);
+    }
   };
 
   const handlePlay = async () => {

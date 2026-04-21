@@ -110,8 +110,10 @@ def callback():
     pid = session.get('firebase_patient_id')
     if pid and is_firebase_ready():
         save_patient_spotify_tokens(pid, token_info)
+    
+    access_token = token_info['access_token']
 
-    return redirect('/home')
+    return redirect(f"memorytune://login-success?token={access_token}")
 
 @app.route('/playback')
 def playback():

@@ -88,3 +88,5 @@ ios/Pods/
 !.yarn/sdks
 !.yarn/versions
 .env
+
+backend/service-accounts.json
