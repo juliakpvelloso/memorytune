@@ -59,55 +59,47 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
 
   const handleLogin = async () => {
     if (!role) return;
-    if (role === 'patient') {
-      navigate('patient');
-      return;
-    }
-    if (isSignUpMode) {
-      if (!passwordLongEnough) {
-        Alert.alert(
-          'Password too short',
-          'Use at least 6 characters (Firebase requirement).',
-        );
-        return;
-      }
-      if (!passwordsMatch) {
-        Alert.alert('Passwords do not match', 'Re-enter the same password twice.');
-        return;
-      }
-      setLoading(true);
-      try {
-        const result = await api.caregiverSignUp(email.trim(), password);
-        if (result.ok) {
-          navigate('caregiverDashboard');
-        } else {
-          Alert.alert('Could not create account', result.error ?? 'Please try again.');
-        }
-      } catch {
-        Alert.alert('Sign up failed', 'Unable to connect. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
 
     setLoading(true);
     try {
-      const ok = await api.caregiverSignIn(email.trim(), password);
-      if (ok) {
-        navigate('caregiverDashboard');
+      let ok = false;
+
+      if (role === 'patient') {
+        // 1. Actually verify the patient credentials via API
+        ok = await api.caregiverSignIn(email.trim(), password);
+        if (ok) {
+          navigate('patient');
+        }
+      } else if (isSignUpMode) {
+        // ... (keep your existing Caregiver Sign Up logic)
+        const result = await api.caregiverSignUp(email.trim(), password);
+        if (result.ok) navigate('caregiverDashboard');
+        return;
       } else {
+        // Caregiver Sign In
+        ok = await api.caregiverSignIn(email.trim(), password);
+        if (ok) navigate('caregiverDashboard');
+      }
+
+      if (!ok && !isSignUpMode) {
         Alert.alert('Sign in failed', 'Please check your email and password.');
       }
-    } catch {
-      Alert.alert('Sign in failed', 'Unable to connect. Please try again.');
+    } catch (error) {
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Add this helper for patient validation
+  const canSubmitPatientSignIn = 
+    isPatient && 
+    email.length > 0 && 
+    password.length > 0;
+
+  // Update the master validation check
   const canLogin =
-    role === 'patient' ||
+    canSubmitPatientSignIn || // Updated this line
     canSubmitCaregiverSignIn ||
     canSubmitCaregiverSignUp;
 
