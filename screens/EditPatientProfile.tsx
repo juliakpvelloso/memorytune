@@ -42,8 +42,8 @@ export default function EditPatientProfile({ navigate }: { navigate: NavigateFn 
 
   // Profile States
   const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [name, setName] = useState('Margaret Thompson');
-  const [birthYear, setBirthYear] = useState('1947');
+  const [name, setName] = useState('');
+  const [birthYear, setBirthYear] = useState('');
   
   // Era States
   const [selectedEras, setSelectedEras] = useState<string[]>([]);
