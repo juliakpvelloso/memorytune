@@ -36,8 +36,34 @@ auth_manager = AuthManager(
 
 def get_spotify_client():
     """Helper to get an authorized client or None if unauthorized."""
+    # First, try to get token from session (normal flow)
     token = auth_manager.get_token(session.get("firebase_patient_id"))
+<<<<<<< Updated upstream
     return SpotifyClient(token) if token else None
+=======
+    if token:
+        user_id = session.get("firebase_patient_id") or "default"
+        if user_id in session_clients:
+            return session_clients[user_id]
+        client = SpotifyClient(token)
+        client.start_session_tracking()
+        session_clients[user_id] = client
+        return client
+    
+    # Fallback: check Authorization header for direct Spotify token (for API calls)
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]
+        user_id = session.get("firebase_patient_id") or "header-auth"
+        if user_id in session_clients:
+            return session_clients[user_id]
+        client = SpotifyClient(token)
+        client.start_session_tracking()
+        session_clients[user_id] = client
+        return client
+    
+    return None
+>>>>>>> Stashed changes
 
 @app.route('/')
 def index():
@@ -212,5 +238,167 @@ def api_caregiver_patients():
         "patients": patients,
     })
 
+<<<<<<< Updated upstream
+=======
+# ── JSON API endpoints (consumed by React Native app) ─────────────────────────
+
+@app.route('/api/token', methods=['GET'])
+def api_token():
+    """Returns whether the session has a valid Spotify token."""
+    token = auth_manager.get_token(session.get("firebase_patient_id"))
+    if token:
+        return jsonify({"authenticated": True, "access_token": token})
+    return jsonify({"authenticated": False})
+
+
+@app.route('/api/currently-playing', methods=['GET'])
+def api_currently_playing():
+    spotify = get_spotify_client()
+    if not spotify:
+        return jsonify({"error": "not authenticated"}), 401
+    
+    data = spotify.get_currently_playing()
+    if not data or not data.get("item"):
+        return jsonify({"song": None, "artist": None, "is_playing": False})
+    
+    item = data["item"]
+    song = item.get("name")
+    artist = item.get("artists", [{}])[0].get("name")
+    
+    # Extract the album cover URL
+    # images[0] is typically the highest resolution (640x640)
+    images = item.get("album", {}).get("images", [])
+    album_cover = images[0].get("url") if images else None
+    
+    is_playing = data.get("is_playing", False)
+    progress_ms = data.get("progress_ms")
+    duration_ms = item.get("duration_ms")
+    
+    pid = session.get("firebase_patient_id")
+    if pid and is_firebase_ready():
+        sync_now_playing(pid, song, artist)
+        
+    return jsonify({
+        "song": song,
+        "artist": artist,
+        "album_cover": album_cover,  # New field
+        "is_playing": is_playing,
+        "progress_ms": progress_ms,
+        "duration_ms": duration_ms,
+    })
+
+
+@app.route('/api/play', methods=['POST'])
+def api_play():
+    spotify = get_spotify_client()
+    if not spotify:
+        return jsonify({"error": "not authenticated"}), 401
+    pid = session.get("firebase_patient_id")
+    print(f"Starting playback for patient {pid}")
+    engine = RecommendationEngine()
+    tracks = engine.get_recommendations_for_patient(pid, session.get('history', []))
+    if len(tracks) == 0:
+        print(f"No recommendations found for patient {pid}, playing era-based playlist if available.")
+        # p = get_patient(pid) or {}
+        # print(f"Patient data: {p}")
+        # mp = p.get("musicalPreference", {})
+        # eras = mp.get("eraPreferences", [])
+        # if len(eras) > 0:
+        playlist_uri = spotify.search_decade_playlist("1990")
+        spotify.play_decade_playlist(playlist_uri)
+    else:
+        print(f"Generated {len(tracks)} recommendations for patient {pid}")
+        for t in tracks:
+            uri = spotify.search_track(f"{t.song} {t.artist}")
+            if uri:
+                spotify.add_to_queue(uri)
+        spotify.skip_to_next()
+    result = spotify._request("PUT", "me/player/play")
+    return jsonify({"status": "playing", **({} if "error" not in result else {"error": result["error"]})})
+
+
+@app.route('/api/pause', methods=['POST'])
+def api_pause():
+    spotify = get_spotify_client()
+    if not spotify:
+        return jsonify({"error": "not authenticated"}), 401
+    result = spotify._request("PUT", "me/player/pause")
+    return jsonify({"status": "paused", **({} if "error" not in result else {"error": result["error"]})})
+
+
+@app.route('/api/skip-next', methods=['POST'])
+def api_skip_next():
+    spotify = get_spotify_client()
+    if not spotify:
+        return jsonify({"error": "not authenticated"}), 401
+    result = spotify.skip_to_next()
+    return jsonify({"status": "skipped", **({} if "error" not in result else {"error": result["error"]})})
+
+
+@app.route('/api/skip-prev', methods=['POST'])
+def api_skip_prev():
+    spotify = get_spotify_client()
+    if not spotify:
+        return jsonify({"error": "not authenticated"}), 401
+    result = spotify._request("POST", "me/player/previous")
+    return jsonify({"status": "skipped", **({} if "error" not in result else {"error": result["error"]})})
+
+
+@app.route('/api/user-profile', methods=['GET', 'POST'])
+def api_user_profile():
+    pid = session.get("firebase_patient_id")
+    if not pid:
+        return jsonify({"error": "no patient session"}), 401
+    if request.method == 'GET':
+        patient = get_patient(pid) or {}
+        prefs = patient.get("musicalPreference", {})
+        pb = prefs.get("playbackPreferences", {})
+        return jsonify({
+            "name": patient.get("name", ""),
+            "birth_year": str(patient.get("birthYear", "")),
+            "era": prefs.get("era", ""),
+            "fav_artists": prefs.get("favArtists", []),
+            "fav_genres": prefs.get("favGenres", []),
+            "blocked_songs": prefs.get("blacklistedSongs", []),
+            "blocked_artists": prefs.get("blacklistedArtists", []),
+            "era_preferences": prefs.get("eraPreferences", []),
+            "playback_preferences": {
+                "continuous_playback": pb.get("continuousPlayback", True),
+                "gentle_transition": pb.get("gentleTransition", True),
+                "allow_explicit": pb.get("allowExplicit", False),
+            },
+            "listening_today_minutes": patient.get("listeningTodayMinutes", 0),
+            "last_played": patient.get("nowPlayingSong", ""),
+        })
+    # POST — partial updates
+    updates = request.get_json(silent=True) or {}
+    firestore_updates: dict = {}
+    if "name" in updates:
+        firestore_updates["name"] = updates["name"]
+    if "birth_year" in updates:
+        firestore_updates["birthYear"] = updates["birth_year"]
+    if "era" in updates:
+        firestore_updates["musicalPreference.era"] = updates["era"]
+    if "fav_artists" in updates:
+        firestore_updates["musicalPreference.favArtists"] = updates["fav_artists"]
+    if "fav_genres" in updates:
+        firestore_updates["musicalPreference.favGenres"] = updates["fav_genres"]
+    if "blocked_songs" in updates:
+        firestore_updates["musicalPreference.blacklistedSongs"] = updates["blocked_songs"]
+    if "blocked_artists" in updates:
+        firestore_updates["musicalPreference.blacklistedArtists"] = updates["blocked_artists"]
+    if "era_preferences" in updates:
+        firestore_updates["musicalPreference.eraPreferences"] = updates["era_preferences"]
+    if "playback_preferences" in updates:
+        pb = updates["playback_preferences"]
+        firestore_updates["musicalPreference.playbackPreferences.continuousPlayback"] = pb.get("continuous_playback", True)
+        firestore_updates["musicalPreference.playbackPreferences.gentleTransition"] = pb.get("gentle_transition", True)
+        firestore_updates["musicalPreference.playbackPreferences.allowExplicit"] = pb.get("allow_explicit", False)
+    if firestore_updates and is_firebase_ready():
+        update_patient(pid, firestore_updates)
+    return jsonify({"status": "ok"})
+
+
+>>>>>>> Stashed changes
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)
