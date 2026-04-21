@@ -54,9 +54,6 @@ def get_spotify_client():
     """Helper to get an authorized client or None if unauthorized."""
     # First, try to get token from session (normal flow)
     token = auth_manager.get_token(session.get("firebase_patient_id"))
-<<<<<<< Updated upstream
-    return SpotifyClient(token) if token else None
-=======
     if token:
         user_id = session.get("firebase_patient_id") or "default"
         if user_id in session_clients:
@@ -79,7 +76,6 @@ def get_spotify_client():
         return client
     
     return None
->>>>>>> Stashed changes
 
 @app.route('/')
 def index():
@@ -256,8 +252,6 @@ def api_caregiver_patients():
         "patients": patients,
     })
 
-<<<<<<< Updated upstream
-=======
 # ── JSON API endpoints (consumed by React Native app) ─────────────────────────
 
 @app.route('/api/token', methods=['GET'])
@@ -303,6 +297,7 @@ def api_currently_playing():
         "is_playing": is_playing,
         "progress_ms": progress_ms,
         "duration_ms": duration_ms,
+        "album_cover": album_cover
     })
 
 
@@ -417,7 +412,6 @@ def api_user_profile():
     return jsonify({"status": "ok"})
 
 
->>>>>>> Stashed changes
 if __name__ == '__main__':
     tracker_thread = threading.Thread(target=background_session_tracker, daemon=True)
     tracker_thread.start()

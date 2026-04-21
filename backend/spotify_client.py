@@ -64,8 +64,6 @@ class SpotifyClient:
     def transfer_playback(self, device_id: str, force_play: bool = False) -> Dict[str, Any]:
         payload = {"device_ids": [device_id], "play": force_play}
         return self._request("PUT", "me/player", json=payload)
-<<<<<<< Updated upstream
-=======
 
     # getting total playing time
     def start_session_tracking(self):
@@ -197,5 +195,4 @@ class SpotifyClient:
         return result
 
     
->>>>>>> Stashed changes
     
