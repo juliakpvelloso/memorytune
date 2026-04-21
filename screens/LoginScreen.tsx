@@ -62,30 +62,21 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
 
     setLoading(true);
     try {
-      let ok = false;
-
-      if (role === 'patient') {
-        // 1. Actually verify the patient credentials via API
-        ok = await api.caregiverSignIn(email.trim(), password);
-        if (ok) {
+      // Both roles now go through the same auth flow
+      const ok = await api.caregiverSignIn(email.trim(), password);
+    
+      if (ok) {
+        // Once authenticated, we just route them differently
+        if (role === 'patient') {
           navigate('patient');
+        } else {
+          navigate('caregiverDashboard');
         }
-      } else if (isSignUpMode) {
-        // ... (keep your existing Caregiver Sign Up logic)
-        const result = await api.caregiverSignUp(email.trim(), password);
-        if (result.ok) navigate('caregiverDashboard');
-        return;
       } else {
-        // Caregiver Sign In
-        ok = await api.caregiverSignIn(email.trim(), password);
-        if (ok) navigate('caregiverDashboard');
-      }
-
-      if (!ok && !isSignUpMode) {
         Alert.alert('Sign in failed', 'Please check your email and password.');
       }
-    } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    } catch (e) {
+      Alert.alert('Error', 'Unable to connect to the server.');
     } finally {
       setLoading(false);
     }

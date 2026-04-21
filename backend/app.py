@@ -293,11 +293,10 @@ def api_currently_playing():
     return jsonify({
         "song": song,
         "artist": artist,
-        "album_cover": album_cover,  # New field
+        "album_cover": album_cover,
         "is_playing": is_playing,
         "progress_ms": progress_ms,
         "duration_ms": duration_ms,
-        "album_cover": album_cover
     })
 
 
@@ -359,9 +358,25 @@ def api_skip_prev():
 
 @app.route('/api/user-profile', methods=['GET', 'POST'])
 def api_user_profile():
-    pid = session.get("firebase_patient_id")
-    if not pid:
-        return jsonify({"error": "no patient session"}), 401
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return jsonify({"error": "No header"}), 401
+
+    parts = auth_header.split()
+    if len(parts) != 2 or parts[0].lower() != 'bearer':
+        return jsonify({"error": "Header format invalid"}), 401
+
+    id_token = parts[1]
+    
+    # Use the verify_id_token function correctly
+    uid = verify_id_token(id_token)
+    
+    if not uid:
+        print("DEBUG: Firebase verify_id_token returned None or failed")
+        return jsonify({"error": "Invalid token"}), 401
+    
+    # If uid is a string, use it directly as the pid
+    pid = uid
     if request.method == 'GET':
         patient = get_patient(pid) or {}
         prefs = patient.get("musicalPreference", {})

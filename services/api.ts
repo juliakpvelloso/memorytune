@@ -65,6 +65,19 @@ export interface NowPlaying {
   album_cover?: string;
 }
 
+const getAuthHeaders = async () => {
+  const auth = getFirebaseAuth();
+  const user = auth.currentUser;
+  const token = user ? await user.getIdToken() : '';
+  
+  console.log("DEBUG: Token retrieved:", token ? "YES (starts with " + token.substring(0,5) + ")" : "NO");
+
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
+};
+
 // ── API client ────────────────────────────────────────────────────────────────
 export const api = {
   /** Returns the Spotify OAuth URL to open in the system browser. */
@@ -174,65 +187,85 @@ export const api = {
     }
   },
 
-  _headers(): Record<string, string> {
-    const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    // Prefer Spotify token for playback calls; fall back to Firebase ID token for caregiver calls
-    const token = _spotifyToken ?? _firebaseIdToken;
-    if (token) {
-      h['Authorization'] = `Bearer ${token}`;
-    }
-    return h;
+  _headers: async function() {
+    const auth = getFirebaseAuth();
+    const user = auth?.currentUser;
+    // getIdToken(true) forces a refresh if the token is old
+    const token = user ? await user.getIdToken() : '';
+  
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    };
   },
 
   /** Get the currently playing track from Spotify. */
   async getCurrentlyPlaying(): Promise<NowPlaying> {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${BASE_URL}/api/currently-playing`, {
-      headers: this._headers(),
+      headers: headers,
     });
     return res.json();
   },
 
   /** Start AI-generated playback. */
   async play(): Promise<{ status: string; error?: string }> {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${BASE_URL}/api/play`, {
       method: 'POST',
-      headers: this._headers(),
+      headers: headers,
     });
     return res.json();
   },
 
   /** Pause playback. */
   async pause(): Promise<{ status: string; error?: string }> {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${BASE_URL}/api/pause`, {
       method: 'POST',
-      headers: this._headers(),
+      headers: headers,
     });
     return res.json();
   },
 
   /** Skip to next track. */
   async skipNext(): Promise<{ status: string; error?: string }> {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${BASE_URL}/api/skip-next`, {
       method: 'POST',
-      headers: this._headers(),
+      headers: headers,
     });
     return res.json();
   },
 
   /** Skip to previous track. */
   async skipPrev(): Promise<{ status: string; error?: string }> {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${BASE_URL}/api/skip-prev`, {
       method: 'POST',
-      headers: this._headers(),
+      headers: headers,
     });
     return res.json();
   },
 
   /** Load the full user profile from the server. */
   async getUserProfile(): Promise<UserProfile> {
+    const headers = await getAuthHeaders(); 
+  
+    // LOG THE URL AND HEADERS ONE LAST TIME
+    console.log(`FETCHING: ${BASE_URL}/api/user-profile`);
+    console.log("WITH HEADERS:", JSON.stringify(headers));
+
     const res = await fetch(`${BASE_URL}/api/user-profile`, {
-      headers: this._headers(),
+      method: 'GET', // Explicitly state the method
+      headers: headers, // This must be an object: { 'Authorization': 'Bearer ...' }
     });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.warn("Server responded with error:", res.status, text);
+    }
+
     return res.json();
   },
 
@@ -240,9 +273,10 @@ export const api = {
   async updateUserProfile(
     updates: Partial<UserProfile>,
   ): Promise<{ status: string; profile: UserProfile }> {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${BASE_URL}/api/user-profile`, {
       method: 'POST',
-      headers: this._headers(),
+      headers: headers,
       body: JSON.stringify(updates),
     });
     return res.json();
