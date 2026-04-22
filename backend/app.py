@@ -384,20 +384,22 @@ def api_play():
     tracks = engine.get_recommendations_for_patient(pid, session.get('history', []))
     if len(tracks) == 0:
         print(f"No recommendations found for patient {pid}, playing era-based playlist if available.")
-        # p = get_patient(pid) or {}
-        # print(f"Patient data: {p}")
-        # mp = p.get("musicalPreference", {})
-        # eras = mp.get("eraPreferences", [])
-        # if len(eras) > 0:
-        playlist_uri = spotify.search_decade_playlist("1990")
-        spotify.play_decade_playlist(playlist_uri)
+        p = get_patient(pid) or {}
+        print(f"Patient data: {p}")
+        mp = p.get("musicalPreference", {})
+        eras = mp.get("eraPreferences", [])
+        decade = "1990s"
+        if len(eras) > 0:
+            decade = eras[0]
+        spotify.play_decade_playlist(decade)
     else:
         print(f"Generated {len(tracks)} recommendations for patient {pid}")
-        for t in tracks:
+        for i, t in enumerate(tracks):  # Added enumerate()
             uri = spotify.search_track(f"{t.song} {t.artist}")
             if uri:
                 spotify.add_to_queue(uri)
-        spotify.skip_to_next()
+                if i == 0:
+                    spotify.skip_to_next()
     result = spotify._request("PUT", "me/player/play")
     return jsonify({"status": "playing", **({} if "error" not in result else {"error": result["error"]})})
 
