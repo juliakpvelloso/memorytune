@@ -72,16 +72,16 @@ export default function LoginScreen({ navigate }: { navigate: NavigateFn }) {
     if (!role) return;
     setLoading(true);
     try {
-      let ok = false;
-      if (role === 'patient') {
-        ok = await api.caregiverSignIn(email.trim(), password);
-        if (ok) navigate('patient');
+      const ok = await api.caregiverSignIn(email.trim(), password);
+      if (ok) {
+        if (role === 'patient') {
+          navigate('patient');
+        } else {
+          navigate('caregiverDashboard');
+        }
       } else if (isSignUpMode) {
         const result = await api.caregiverSignUp(email.trim(), password);
         if (result.ok) navigate('caregiverDashboard');
-      } else {
-        ok = await api.caregiverSignIn(email.trim(), password);
-        if (ok) navigate('caregiverDashboard');
       }
       if (!ok && !isSignUpMode) Alert.alert('Sign in failed', 'Please check your email and password.');
     } catch (error) {
