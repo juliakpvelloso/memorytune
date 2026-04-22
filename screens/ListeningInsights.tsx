@@ -1,9 +1,23 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { api, type ListeningInsights as ListeningInsightsData } from '../services/api';
 import type { NavigateFn } from '../types';
 
 export default function ListeningInsights({ navigate }: { navigate: NavigateFn }) {
   const insets = useSafeAreaInsets();
+  const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'year'>('day');
+  const [loading, setLoading] = useState(true);
+  const [insights, setInsights] = useState<ListeningInsightsData | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .getListeningInsights(period)
+      .then(data => setInsights(data))
+      .catch(() => setInsights(null))
+      .finally(() => setLoading(false));
+  }, [period]);
 
   return (
     <View
@@ -29,12 +43,41 @@ export default function ListeningInsights({ navigate }: { navigate: NavigateFn }
 
       <Text style={styles.title}>Listening Insights</Text>
 
+      <View style={styles.periodRow}>
+        {(['day', 'week', 'month', 'year'] as const).map(value => (
+          <Pressable
+            key={value}
+            onPress={() => setPeriod(value)}
+            style={[styles.periodPill, period === value && styles.periodPillActive]}>
+            <Text style={[styles.periodPillText, period === value && styles.periodPillTextActive]}>
+              {value === 'day'
+                ? 'Today'
+                : value === 'week'
+                  ? 'This Week'
+                  : value === 'month'
+                    ? 'This Month'
+                    : 'This Year'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
       {/* Main card */}
       <View style={styles.card}>
+        <Text style={styles.subtitle}>
+          {insights?.patient?.name ? `Patient: ${insights.patient.name}` : 'Patient insights'}
+        </Text>
+
         {/* Listened Today */}
-        <Text style={styles.cardSectionTitle}>Listened Today</Text>
+        <Text style={styles.cardSectionTitle}>
+          {period === 'day' ? 'Listened Today' : `Minutes (${period})`}
+        </Text>
         <View style={styles.minutesBox}>
-          <Text style={styles.minutesNumber}>42</Text>
+          {loading ? (
+            <ActivityIndicator size="large" color="#111827" />
+          ) : (
+            <Text style={styles.minutesNumber}>{insights?.minutes_listened ?? 0}</Text>
+          )}
           <Text style={styles.minutesLabel}>Minutes</Text>
         </View>
 
@@ -46,11 +89,37 @@ export default function ListeningInsights({ navigate }: { navigate: NavigateFn }
             <Text style={styles.albumArtNote}>♫</Text>
           </View>
           <View style={styles.songDetails}>
-            <Text style={styles.songTitle}>Beyond the Sea</Text>
-            <Text style={styles.songArtist}>Bobby Darin</Text>
+            <Text style={styles.songTitle}>{insights?.top_song?.song || 'No song data'}</Text>
+            <Text style={styles.songArtist}>{insights?.top_song?.artist || '—'}</Text>
           </View>
         </View>
+
+        <View style={styles.metaGrid}>
+          <MetaSection label="Top Artists" value={(insights?.top_artists || []).join(', ') || '—'} />
+          <MetaSection label="Top Genres" value={(insights?.top_genres || []).join(', ') || '—'} />
+          <MetaSection
+            label="Era Preferences"
+            value={(insights?.era_preferences || []).join(', ') || '—'}
+          />
+          <MetaSection
+            label="Blacklist"
+            value={
+              insights
+                ? `${insights.blacklist.songs_count} songs, ${insights.blacklist.artists_count} artists`
+                : '—'
+            }
+          />
+        </View>
       </View>
+    </View>
+  );
+}
+
+function MetaSection({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.metaSection}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={styles.metaValue}>{value}</Text>
     </View>
   );
 }
@@ -90,11 +159,44 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+  periodRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  periodPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  periodPillActive: {
+    backgroundColor: '#111827',
+    borderColor: '#111827',
+  },
+  periodPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  periodPillTextActive: {
+    color: '#FFFFFF',
+  },
   card: {
     backgroundColor: '#C8C8C8',
     borderRadius: 24,
     padding: 24,
     gap: 14,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#374151',
+    textAlign: 'center',
+    fontWeight: '600',
   },
   cardSectionTitle: {
     fontSize: 18,
@@ -155,6 +257,28 @@ const styles = StyleSheet.create({
   songArtist: {
     fontSize: 14,
     color: '#6B7280',
+    fontWeight: '500',
+  },
+  metaGrid: {
+    gap: 10,
+    marginTop: 4,
+  },
+  metaSection: {
+    backgroundColor: '#ECECEC',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 2,
+  },
+  metaLabel: {
+    fontSize: 12,
+    color: '#4B5563',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  metaValue: {
+    fontSize: 14,
+    color: '#111827',
     fontWeight: '500',
   },
 });
