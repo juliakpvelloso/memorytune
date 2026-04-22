@@ -86,6 +86,21 @@ def _verified_caregiver_uid_from_header():
         return None
     return verify_id_token(auth_header[7:])
 
+
+def _resolve_active_patient_id() -> str | None:
+    pid = session.get("firebase_patient_id")
+    if pid:
+        return pid
+    caregiver_uid = session.get("firebase_uid")
+    if caregiver_uid:
+        patients = list_patients_for_caregiver(caregiver_uid)
+        if patients:
+            pid = patients[0].get("_id")
+            if pid:
+                session["firebase_patient_id"] = pid
+                return pid
+    return None
+
 @app.route('/')
 def index():
     return "<h1>MemoryTune Dev Server</h1><p><a href='/playback'>Start Playback</a></p>"
@@ -429,17 +444,92 @@ def api_skip_prev():
     return jsonify({"status": "skipped", **({} if "error" not in result else {"error": result["error"]})})
 
 
+@app.route('/api/listening-insights', methods=['GET'])
+def api_listening_insights():
+    """
+    Returns patient-specific listening insights for caregiver view.
+    period:
+      - day (default)
+      - week
+      - month
+      - year
+    """
+    pid = _resolve_active_patient_id()
+    if not pid:
+        return jsonify({"error": "no patient session"}), 401
+
+    patient = get_patient(pid) or {}
+    prefs = patient.get("musicalPreference", {})
+
+    period = (request.args.get("period") or "day").lower()
+    if period not in {"day", "week", "month", "year"}:
+        period = "day"
+
+    # Firestore-first metrics
+    today_minutes = int(patient.get("listeningTodayMinutes", 0) or 0)
+    totals = patient.get("listeningTotals", {}) or {}
+    period_minutes = int(totals.get(period, 0) or 0)
+    if period == "day" or period_minutes <= 0:
+        period_minutes = today_minutes
+
+    top_artists = patient.get("topArtists", []) or prefs.get("favArtists", []) or []
+    top_genres = patient.get("topGenres", []) or prefs.get("favGenres", []) or []
+    eras = prefs.get("eraPreferences", []) or []
+    blocked_songs = prefs.get("blacklistedSongs", []) or []
+    blocked_artists = prefs.get("blacklistedArtists", []) or []
+
+    top_song = {
+        "song": patient.get("mostPlayedSong", "") or patient.get("nowPlayingSong", ""),
+        "artist": patient.get("mostPlayedArtist", "") or patient.get("nowPlayingArtist", ""),
+    }
+
+    # Optional Spotify enrichment when token is available
+    spotify = get_spotify_client()
+    if spotify:
+        time_range_map = {
+            "day": "short_term",
+            "week": "short_term",
+            "month": "medium_term",
+            "year": "long_term",
+        }
+        most_played = spotify.get_most_played_song(
+            time_range=time_range_map.get(period, "medium_term")
+        )
+        if most_played:
+            top_song = {
+                "song": most_played.get("song", top_song["song"]),
+                "artist": most_played.get("artist", top_song["artist"]),
+            }
+
+    return jsonify(
+        {
+            "patient": {
+                "id": pid,
+                "name": patient.get("name", ""),
+                "birth_year": str(patient.get("birthYear", "")),
+            },
+            "period": period,
+            "minutes_listened": period_minutes,
+            "minutes_today": today_minutes,
+            "top_song": top_song,
+            "top_artists": top_artists[:5],
+            "top_genres": top_genres[:5],
+            "era_preferences": eras,
+            "blacklist": {
+                "songs_count": len(blocked_songs),
+                "artists_count": len(blocked_artists),
+            },
+            "last_played": {
+                "song": patient.get("nowPlayingSong", ""),
+                "artist": patient.get("nowPlayingArtist", ""),
+            },
+        }
+    )
+
+
 @app.route('/api/user-profile', methods=['GET', 'POST'])
 def api_user_profile():
-    pid = session.get("firebase_patient_id")
-    if not pid:
-        caregiver_uid = session.get("firebase_uid")
-        if caregiver_uid:
-            patients = list_patients_for_caregiver(caregiver_uid)
-            if patients:
-                pid = patients[0].get("_id")
-                if pid:
-                    session["firebase_patient_id"] = pid
+    pid = _resolve_active_patient_id()
     if not pid:
         return jsonify({"error": "no patient session"}), 401
     if request.method == 'GET':

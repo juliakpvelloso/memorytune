@@ -82,6 +82,32 @@ export interface CaregiverPatient {
   nowPlayingSong?: string;
 }
 
+export interface ListeningInsights {
+  patient: {
+    id: string;
+    name: string;
+    birth_year: string;
+  };
+  period: 'day' | 'week' | 'month' | 'year';
+  minutes_listened: number;
+  minutes_today: number;
+  top_song: {
+    song: string;
+    artist: string;
+  };
+  top_artists: string[];
+  top_genres: string[];
+  era_preferences: string[];
+  blacklist: {
+    songs_count: number;
+    artists_count: number;
+  };
+  last_played: {
+    song: string;
+    artist: string;
+  };
+}
+
 // ── API client ────────────────────────────────────────────────────────────────
 export const api = {
   /** Returns the Spotify OAuth URL to open in the system browser. */
@@ -285,6 +311,15 @@ export const api = {
   async skipPrev(): Promise<{ status: string; error?: string }> {
     const res = await fetch(`${BASE_URL}/api/skip-prev`, {
       method: 'POST',
+      headers: this._headers(),
+    });
+    return res.json();
+  },
+
+  async getListeningInsights(
+    period: 'day' | 'week' | 'month' | 'year' = 'day',
+  ): Promise<ListeningInsights> {
+    const res = await fetch(`${BASE_URL}/api/listening-insights?period=${period}`, {
       headers: this._headers(),
     });
     return res.json();
