@@ -7,6 +7,16 @@ import type { NavigateFn } from '../types';
 
 const STATIC_ERAS = ['1950s', '1960s', '1970s', '1980s'];
 
+const canonicalizeEra = (value: unknown): string => {
+  const raw = String(value ?? '');
+  const trimmed = raw.trim().replace(/[’']/g, '').toLowerCase();
+  const decadeMatch = trimmed.match(/^(\d{4})s?$/);
+  if (decadeMatch) {
+    return `${decadeMatch[1]}s`;
+  }
+  return trimmed;
+};
+
 function SubsectionCard({
   items,
   editLabel,
@@ -65,6 +75,7 @@ export default function ManageMusic({ navigate }: { navigate: NavigateFn }) {
   const [artists, setArtists] = useState<{name: string, initials?: string, bg: string}[]>([]);
   const [genres, setGenres]   = useState<{name: string, bg: string}[]>([]);
   const [saving, setSaving]   = useState(false);
+  const [activePatientReady, setActivePatientReady] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'artists' | 'genres' | 'eras'>('artists');
@@ -74,13 +85,51 @@ export default function ManageMusic({ navigate }: { navigate: NavigateFn }) {
   const ARTIST_COLORS = ['#7C8FA0', '#8C7A6B', '#6B7A5C', '#5B3A8C', '#7A4A1E'];
   const GENRE_COLORS  = ['#5B3A8C', '#7A4A1E', '#C07020', '#2D6A4F', '#1D3557'];
 
+  const normalizeEras = (eras: unknown[]) => {
+    const normalized = eras
+      .map(e => String(e ?? '').trim())
+      .filter(Boolean)
+      .map(canonicalizeEra);
+    return Array.from(new Set(normalized));
+  };
+
+  const ensureActivePatient = async () => {
+    const data = await api.getCaregiverPatients();
+    const first = data.patients?.[0];
+    if (first?._id) {
+      await api.selectPatient(first._id);
+      setActivePatientReady(true);
+      return;
+    }
+    const created = await api.createPatient({
+      name: 'New Patient',
+      birth_year: '',
+      era_preferences: [],
+      blocked_songs: [],
+      blocked_artists: [],
+      fav_artists: [],
+      fav_genres: [],
+    });
+    if (created.ok && created.patient_id) {
+      await api.selectPatient(created.patient_id);
+      setActivePatientReady(true);
+    }
+  };
+
   useEffect(() => {
-    api.getUserProfile()
+    ensureActivePatient()
+      .then(() => api.getUserProfile())
       .then(profile => {
-        if (profile.era_preferences?.length) {
-          setSelectedEras(profile.era_preferences);
+        const persistedEras = normalizeEras([
+          ...(Array.isArray(profile.era_preferences) ? profile.era_preferences : []),
+          ...(profile.era ? [profile.era] : []),
+        ]);
+        if (persistedEras.length) {
+          setSelectedEras(persistedEras);
           // Identify which eras in the profile are "custom" (not in our static list)
-          const custom = profile.era_preferences.filter((e: string) => !STATIC_ERAS.includes(e));
+          const custom = persistedEras.filter(
+            (e: string) => !STATIC_ERAS.map(canonicalizeEra).includes(canonicalizeEra(e)),
+          );
           setCustomEras(custom);
         }
         if (profile.fav_artists?.length) {
@@ -101,6 +150,13 @@ export default function ManageMusic({ navigate }: { navigate: NavigateFn }) {
   }, []);
 
   const saveToApi = async (key: string, data: string[]) => {
+    if (!activePatientReady) {
+      try {
+        await ensureActivePatient();
+      } catch {
+        return;
+      }
+    }
     setSaving(true);
     try { 
       await api.updateUserProfile({ [key]: data }); 
@@ -149,12 +205,14 @@ export default function ManageMusic({ navigate }: { navigate: NavigateFn }) {
       return;
     }
 
-    const updated = selectedEras.includes(era)
-      ? selectedEras.filter(e => e !== era)
-      : [...selectedEras, era];
+    const canonicalEra = canonicalizeEra(era);
+    const updated = selectedEras.map(canonicalizeEra).includes(canonicalEra)
+      ? selectedEras.filter(e => canonicalizeEra(e) !== canonicalEra)
+      : [...selectedEras, canonicalEra];
     
-    setSelectedEras(updated);
-    saveToApi('era_preferences', updated);
+    const normalized = normalizeEras(updated);
+    setSelectedEras(normalized);
+    saveToApi('era_preferences', normalized);
   };
 
   const handleRemoveItem = (name: string, type: 'artists' | 'genres') => {
@@ -195,7 +253,10 @@ export default function ManageMusic({ navigate }: { navigate: NavigateFn }) {
         <Text style={styles.sectionTitle}>Music Era Preferences</Text>
         <View style={styles.eraGrid}>
           {displayEras.map(era => {
-            const isSelected = selectedEras.includes(era);
+            const canonicalEra = canonicalizeEra(era);
+            const isSelected = selectedEras
+              .map(canonicalizeEra)
+              .includes(canonicalEra);
             const isOther = era === 'Other';
             return (
               <Pressable

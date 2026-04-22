@@ -204,7 +204,7 @@ export const api = {
   async bootstrapCaregiverProfile(email: string): Promise<void> {
     const res = await fetch(`${BASE_URL}/api/caregiver/bootstrap`, {
       method: 'POST',
-      headers: this._headers(),
+      headers: this._headers('firebase'),
       body: JSON.stringify({ email }),
     });
     if (!res.ok) {
@@ -217,7 +217,7 @@ export const api = {
     patients: CaregiverPatient[];
   }> {
     const res = await fetch(`${BASE_URL}/api/caregiver/patients`, {
-      headers: this._headers(),
+      headers: this._headers('firebase'),
     });
     return res.json();
   },
@@ -227,7 +227,7 @@ export const api = {
   ): Promise<{ ok: boolean; patient_id?: string; error?: string }> {
     const res = await fetch(`${BASE_URL}/api/caregiver/patients`, {
       method: 'POST',
-      headers: this._headers(),
+      headers: this._headers('firebase'),
       body: JSON.stringify(updates),
     });
     return res.json();
@@ -236,7 +236,7 @@ export const api = {
   async selectPatient(patientId: string): Promise<boolean> {
     const res = await fetch(`${BASE_URL}/api/caregiver/select-patient`, {
       method: 'POST',
-      headers: this._headers(),
+      headers: this._headers('firebase'),
       body: JSON.stringify({ patient_id: patientId }),
     });
     const data = await res.json();
@@ -262,10 +262,17 @@ export const api = {
     }
   },
 
-  _headers(): Record<string, string> {
+  _headers(mode: 'auto' | 'firebase' | 'spotify' = 'auto'): Record<string, string> {
     const h: Record<string, string> = { 'Content-Type': 'application/json' };
-    // Prefer Spotify token for playback calls; fall back to Firebase ID token for caregiver calls
-    const token = _spotifyToken ?? _firebaseIdToken;
+    let token: string | null = null;
+    if (mode === 'firebase') {
+      token = _firebaseIdToken;
+    } else if (mode === 'spotify') {
+      token = _spotifyToken;
+    } else {
+      // Default behavior for mixed endpoints.
+      token = _spotifyToken ?? _firebaseIdToken;
+    }
     if (token) {
       h['Authorization'] = `Bearer ${token}`;
     }
@@ -320,7 +327,7 @@ export const api = {
     period: 'day' | 'week' | 'month' | 'year' = 'day',
   ): Promise<ListeningInsights> {
     const res = await fetch(`${BASE_URL}/api/listening-insights?period=${period}`, {
-      headers: this._headers(),
+      headers: this._headers('firebase'),
     });
     return res.json();
   },

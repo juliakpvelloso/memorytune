@@ -538,6 +538,27 @@ def api_user_profile():
         patient = get_patient(pid) or {}
         prefs = patient.get("musicalPreference", {})
         pb = prefs.get("playbackPreferences", {})
+        era_preferences = prefs.get("eraPreferences")
+        if not isinstance(era_preferences, list):
+            era_preferences = patient.get("eraPreferences")
+        if not isinstance(era_preferences, list):
+            era_preferences = patient.get("era_preferences")
+        if not isinstance(era_preferences, list):
+            era_preferences = []
+        if prefs.get("era"):
+            era_preferences = list(era_preferences) + [prefs.get("era")]
+        # Normalize to strings and remove empties/dupes.
+        normalized_eras = []
+        seen = set()
+        for era in era_preferences:
+            val = str(era).strip()
+            if not val:
+                continue
+            key = val.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized_eras.append(val)
         return jsonify({
             "name": patient.get("name", ""),
             "birth_year": str(patient.get("birthYear", "")),
@@ -547,7 +568,7 @@ def api_user_profile():
             "fav_genres": prefs.get("favGenres", []),
             "blocked_songs": prefs.get("blacklistedSongs", []),
             "blocked_artists": prefs.get("blacklistedArtists", []),
-            "era_preferences": prefs.get("eraPreferences", []),
+            "era_preferences": normalized_eras,
             "playback_preferences": {
                 "continuous_playback": pb.get("continuousPlayback", True),
                 "gentle_transition": pb.get("gentleTransition", True),

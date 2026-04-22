@@ -17,6 +17,16 @@ import type { NavigateFn } from '../types';
 
 const STATIC_ERAS = ['1950s', '1960s', '1970s', '1980s'];
 
+const canonicalizeEra = (value: unknown): string => {
+  const raw = String(value ?? '');
+  const trimmed = raw.trim().replace(/[’']/g, '').toLowerCase();
+  const decadeMatch = trimmed.match(/^(\d{4})s?$/);
+  if (decadeMatch) {
+    return `${decadeMatch[1]}s`;
+  }
+  return trimmed;
+};
+
 function ScreenHeader({ onBack }: { onBack: () => void }) {
   return (
     <View style={headerS.row}>
@@ -57,6 +67,14 @@ export default function EditPatientProfile({ navigate }: { navigate: NavigateFn 
   const [saving, setSaving] = useState(false);
   const [activePatientReady, setActivePatientReady] = useState(false);
 
+  const normalizeEras = (eras: unknown[]) => {
+    const normalized = eras
+      .map(e => String(e ?? '').trim())
+      .filter(Boolean)
+      .map(canonicalizeEra);
+    return Array.from(new Set(normalized));
+  };
+
   const ensureActivePatient = async () => {
     const data = await api.getCaregiverPatients();
     const first = data.patients?.[0];
@@ -87,9 +105,15 @@ export default function EditPatientProfile({ navigate }: { navigate: NavigateFn 
         setName(p.name);
         setBirthYear(p.birth_year);
         if (p.profile_image) setProfileImage(p.profile_image);
-        if (p.era_preferences) {
-          setSelectedEras(p.era_preferences);
-          const custom = p.era_preferences.filter((e: string) => !STATIC_ERAS.includes(e));
+        const persistedEras = normalizeEras([
+          ...(Array.isArray(p.era_preferences) ? p.era_preferences : []),
+          ...(p.era ? [p.era] : []),
+        ]);
+        if (persistedEras.length) {
+          setSelectedEras(persistedEras);
+          const custom = persistedEras.filter(
+            (e: string) => !STATIC_ERAS.map(canonicalizeEra).includes(canonicalizeEra(e)),
+          );
           setCustomEras(custom);
         }
       })
@@ -126,18 +150,20 @@ export default function EditPatientProfile({ navigate }: { navigate: NavigateFn 
       setIsAddingCustom(true);
       return;
     }
-    const next = selectedEras.includes(eraName)
-      ? selectedEras.filter(e => e !== eraName)
-      : [...selectedEras, eraName];
-    setSelectedEras(next);
-    syncProfile({ era_preferences: next });
+    const canonicalEra = canonicalizeEra(eraName);
+    const next = selectedEras.map(canonicalizeEra).includes(canonicalEra)
+      ? selectedEras.filter(e => canonicalizeEra(e) !== canonicalEra)
+      : [...selectedEras, canonicalEra];
+    const normalized = normalizeEras(next);
+    setSelectedEras(normalized);
+    syncProfile({ era_preferences: normalized });
   };
 
   const addCustomEra = () => {
     if (customInput.trim()) {
       const newEra = customInput.trim();
-      const next = [...selectedEras, newEra];
-      setCustomEras(prev => [...prev, newEra]);
+      const next = normalizeEras([...selectedEras, newEra]);
+      setCustomEras(prev => normalizeEras([...prev, newEra]));
       setSelectedEras(next);
       syncProfile({ era_preferences: next });
       setCustomInput('');
@@ -220,7 +246,9 @@ export default function EditPatientProfile({ navigate }: { navigate: NavigateFn 
           ) : (
             <View style={styles.eraPickerWrap}>
               {displayEras.map(era => {
-                const isSelected = selectedEras.includes(era);
+                const isSelected = selectedEras
+                  .map(canonicalizeEra)
+                  .includes(canonicalizeEra(era));
                 return (
                   <Pressable key={era} onPress={() => toggleEra(era)} style={[styles.eraPill, isSelected && styles.eraPillSelected, era === 'Other' && styles.otherPill]}>
                     <Text style={[styles.eraPillText, isSelected && styles.eraPillTextSelected]}>{era}</Text>
